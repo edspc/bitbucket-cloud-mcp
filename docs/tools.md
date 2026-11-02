@@ -180,8 +180,12 @@ The variable tools work at one of three places, chosen by `scope`:
 | `repository` | `repo`                | all pipelines of the repository       |
 | `deployment` | `repo`, `environment` | one deployment environment of `repo`  |
 
-- `list_variables` lists names and values; values of secured variables are
-  never returned.
+- `list_variables` lists one page of names and values; values of secured
+  variables are never returned. `limit` is 10 by default, at most 50; `page`
+  starts at 1. Pass `next_page` as `page` with the same scope, repository,
+  environment and limit for more. `total` is returned when Bitbucket supplies
+  the count. Each call fetches only the requested variable page; resolving a
+  deployment environment name may require additional environment requests.
 - `set_variable` creates a variable (`name`), or overwrites it with
   `force: true`. A plain variable takes its `value` from the call. A secured
   variable (`secured: true`) never does: a `value` in the call is refused, and
@@ -245,7 +249,11 @@ Pages are counted from the newest pipeline, so a run started between two calls
 moves the next page by one and repeats a pipeline. A call costs one API
 request. `get_pipeline`
 returns one `pipeline`, by build number or UUID (with or without its braces),
-with the state of each step.
+with one page of its steps. `steps_limit` is 10 by default, at most 50;
+`steps_page` starts at 1. Pass `steps_next_page` as `steps_page`, keeping the same
+pipeline and `steps_limit`, for more. `steps_total` is included when Bitbucket
+supplies it. Only the requested step page is downloaded. Pipeline resources and
+`watch_pipeline` continue reading all steps for complete monitoring.
 States read like `PENDING`, `IN_PROGRESS/RUNNING`, `IN_PROGRESS/PAUSED` (waits
 for a manual step) or `COMPLETED/FAILED`.
 
@@ -315,6 +323,13 @@ of a step: the `step` given by name or UUID, or else the first failed step, or
 else the last step that started. Only the end of the log is downloaded; the
 result links to the step page with the whole log.
 
+The `steps` alternatives accompanying the log use `steps_page` (1 by default)
+and `steps_limit` (10 by default, at most 50). Pass `steps_next_page` as
+`steps_page`, keeping the same pipeline, selected step, tail size and
+`steps_limit`, for another page. `steps_total` gives the full count. The tool
+still reads all step metadata to select a step by name or choose the default;
+the selected log is independent of the page of alternatives shown.
+
 ## Deployment environments
 
 `create_deployment` creates a deployment environment in `repo`, with `name` and
@@ -330,7 +345,10 @@ with 7 fields: seconds, minutes, hours, day of month, month, day of week and
 year (`0 0 2 * * ? *` runs at 02:00 UTC every day).
 
 - `list_schedules` lists the schedules of `repo`: UUID, branch, pipeline, cron
-  pattern and whether it is enabled.
+  pattern and whether it is enabled. `limit` is 10 by default, at most 50;
+  `page` starts at 1. Each call downloads only that page. Pass `next_page` as
+  `page`, with the same repository and limit, for more. `total` is included
+  when Bitbucket supplies it.
 - `add_schedule` schedules the `pipeline` of `branch` in `repo` by `cron`. The
   pipeline is written the way results show it: `custom: <name>`,
   `branches: <pattern>` with the pattern as in `bitbucket-pipelines.yml`, or
@@ -344,6 +362,10 @@ year (`0 0 2 * * ? *` runs at 02:00 UTC every day).
   before it is deleted: if it changed meanwhile (branch, pipeline, cron or
   whether it is enabled) or its branch is no longer allowed, nothing is
   deleted and the call has to be made again.
+
+Variable and schedule collections can change between page requests, so entries
+can move or repeat. Paginated read tools do not limit the complete internal
+lookups used to prevent duplicate schedules or unintended variable overwrites.
 
 ## Pull requests
 
@@ -371,14 +393,22 @@ costs one API request.
   request from a fork), and the destination branch it merges into;
 - reviewers and other participants who decided, with their state
   (`approved`, `changes_requested`, or `pending` for a reviewer);
-- the latest 50 build results reported for it, newest first, such as pipeline runs;
+- one page of build results reported for it, newest first, such as pipeline runs
+  (50 by default);
 - the paths of the changed files with their status and added and removed
   lines, and how many there are, 200 a page: `files_next` is passed back as
   `files_from` for the next page. Later pages leave out the description,
   reviewers and builds.
 
-Build results are fetched in one bounded API request. `builds_truncated` indicates
-that more exist; `builds_total` is included only when Bitbucket reports the count.
+Build results are fetched in one bounded API request. `builds_limit` is 50 by
+default, at most 50; `builds_page` starts at 1. Pass `builds_next_page` as
+`builds_page`, keeping the same repository, PR and `builds_limit`, for more.
+Later build pages return the PR summary and build results without loading files,
+diffs, description or reviewers. Build pagination arguments cannot be combined
+with `paths` or `files_from`. New results or PR commits can change the collection
+between calls, so results can move or repeat. `builds_truncated` indicates that
+later pages exist; `builds_total` is included when Bitbucket reports a count
+larger than the returned page.
 File pages are fetched directly from the requested offset, with at most three
 API page reads per call, rather than downloading all earlier or later pages.
 `files_total` is omitted when Bitbucket does not report it. Each API collection

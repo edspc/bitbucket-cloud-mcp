@@ -3,6 +3,8 @@ package bitbucket
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strconv"
 )
 
 // Variable is a pipeline variable; Value is empty for secured variables read back from the API.
@@ -37,6 +39,12 @@ func (c *Client) variablesPath(s VariableScope, parts ...string) string {
 
 func (c *Client) ListVariables(ctx context.Context, s VariableScope) ([]Variable, error) {
 	return list[Variable](ctx, c, c.variablesPath(s))
+}
+
+func (c *Client) ListVariablesPage(ctx context.Context, s VariableScope, page, limit int) (Page[Variable], error) {
+	q := url.Values{"page": {strconv.Itoa(page)}, "pagelen": {strconv.Itoa(limit)}}
+	p, err := readPage[Variable](ctx, c, APIURL+c.variablesPath(s)+"?"+q.Encode(), limit)
+	return Page[Variable]{Values: p.Values, Total: p.Size, More: p.Next != ""}, err
 }
 
 func (c *Client) CreateVariable(ctx context.Context, s VariableScope, v Variable) error {

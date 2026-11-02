@@ -134,7 +134,7 @@ func newServer(impl *mcp.Implementation, t *tools) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_variables",
 		Title:       "List pipeline variables",
-		Description: "List pipeline variables of the workspace, of a repository or of one deployment environment. Values of secured variables are never returned.",
+		Description: "List pipeline variables of the workspace, of a repository or of one deployment environment, one page at a time. Pass next_page as page, keeping the same scope, repo, environment and limit, for more. Values of secured variables are never returned.",
 		Annotations: readOnly,
 	}, guarded(t, t.listVariables))
 	mcp.AddTool(s, &mcp.Tool{
@@ -174,7 +174,7 @@ func newServer(impl *mcp.Implementation, t *tools) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_pipeline",
 		Title:       "Get pipeline status",
-		Description: "Get the status of a pipeline and its steps, by build number or UUID.",
+		Description: "Get the status of a pipeline by build number or UUID, with one page of its steps. Pass steps_next_page as steps_page with the same pipeline and steps_limit for more steps.",
 		Annotations: readOnly,
 	}, guarded(t, t.getPipeline))
 	mcp.AddTool(s, &mcp.Tool{
@@ -194,7 +194,7 @@ func newServer(impl *mcp.Implementation, t *tools) *mcp.Server {
 		Name:  "get_pipeline_log",
 		Title: "Get a pipeline step log",
 		Description: "Return the last lines of the log of a pipeline step: the step asked for, or else the " +
-			"first failed step, or else the last step that started.",
+			"first failed step, or else the last step that started. The alternatives in steps are paged: pass steps_next_page as steps_page with the same steps_limit for more.",
 		Annotations: readOnly,
 	}, guarded(t, t.pipelineLog))
 
@@ -203,7 +203,7 @@ func newServer(impl *mcp.Implementation, t *tools) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_schedules",
 		Title:       "List pipeline schedules",
-		Description: "List the schedules of a repository: which pipeline of which branch runs when, by a cron pattern in UTC.",
+		Description: "List the schedules of a repository, one page at a time: which pipeline of which branch runs when, by a cron pattern in UTC. Pass next_page as page with the same repo and limit for more.",
 		Annotations: readOnly,
 	}, guarded(t, t.listSchedules))
 	mcp.AddTool(s, &mcp.Tool{
@@ -229,7 +229,7 @@ func newServer(impl *mcp.Implementation, t *tools) *mcp.Server {
 			"results such as pipeline runs, and the paths of the changed files with line counts, 200 a page: " +
 			"pass files_next back as files_from for the next page. With paths, get the diff of those files " +
 			"instead; a diff over 40 KB comes in parts: pass diff_next back as diff_from, with the same paths, " +
-			"to read the next one.",
+			"to read the next one. Builds are paged separately: pass builds_next_page as builds_page, with the same builds_limit and without paths or files_from, for more build results.",
 		Annotations: readOnly,
 	}, guarded(t, t.getPullRequest))
 	mcp.AddTool(s, &mcp.Tool{

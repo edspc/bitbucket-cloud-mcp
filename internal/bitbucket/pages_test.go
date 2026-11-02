@@ -29,7 +29,7 @@ func TestPullRequestStatusesDoesNotFollowNext(t *testing.T) {
 				}
 				_ = json.NewEncoder(w).Encode(page)
 			})
-			page, err := c.PullRequestStatuses(t.Context(), "repo-a", 7, 50)
+			page, err := c.PullRequestStatuses(t.Context(), "repo-a", 7, 1, 50)
 			if err != nil || len(page.Values) != 50 || !page.More || requests != 1 {
 				t.Fatalf("page=%+v, requests=%d, err=%v", page, requests, err)
 			}
@@ -81,7 +81,7 @@ func TestCollectionPagesRejectOversizedOrEmptyNext(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newTestClient(func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, tc.body) })
-			if _, err := c.PullRequestStatuses(t.Context(), "repo-a", 7, 50); err == nil {
+			if _, err := c.PullRequestStatuses(t.Context(), "repo-a", 7, 1, 50); err == nil {
 				t.Fatal("unbounded or non-progressing response accepted")
 			}
 		})

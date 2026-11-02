@@ -15,7 +15,7 @@ func TestListVariablesHidesSecuredValues(t *testing.T) {
 	f := newFake()
 	f.vars["repo-b"] = []bitbucket.Variable{{UUID: "{v1}", Key: "PLAIN", Value: "visible"}, {UUID: "{v2}", Key: "SECRET", Value: "hidden", Secured: true}}
 	got := decodeResult[listVariablesResult](t, mustCall(t, connect(t, f, nil), "list_variables", map[string]any{"scope": "repository", "repo": "repo-b"}))
-	want := listVariablesResult{ContentTrust: "untrusted", Place: "repository variables of repo-b", Variables: []variableView{{Name: "PLAIN", Value: "visible"}, {Name: "SECRET", Secured: true}}}
+	want := listVariablesResult{ContentTrust: "untrusted", Place: "repository variables of repo-b", Variables: []variableView{{Name: "PLAIN", Value: "visible"}, {Name: "SECRET", Secured: true}}, Total: new(2)}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("result = %+v", got)
 	}

@@ -34,6 +34,8 @@ type getPullRequestInput struct {
 	Paths       []string `json:"paths,omitempty" jsonschema:"files to show the diff of, by their path in files; without paths the result describes the pull request and lists its files instead"`
 	DiffFrom    string   `json:"diff_from,omitempty" jsonschema:"the diff_next of the previous part, with the same paths, to read the next part of a long diff"`
 	FilesFrom   string   `json:"files_from,omitempty" jsonschema:"the files_next of the previous page, without paths, to list the next files of a pull request that changes many"`
+	BuildsPage  int      `json:"builds_page,omitempty" jsonschema:"build results page from 1; pass builds_next_page for more, without paths or files_from"`
+	BuildsLimit int      `json:"builds_limit,omitempty" jsonschema:"build results per page; 50 when omitted, at most 50; keep the same value on subsequent pages"`
 }
 
 func (in getPullRequestInput) validate() error {
@@ -51,6 +53,15 @@ func (in getPullRequestInput) validate() error {
 	}
 	if in.FilesFrom != "" && len(in.Paths) > 0 {
 		return errors.New("files_from lists files, so it goes without paths")
+	}
+	if (in.BuildsPage != 0 || in.BuildsLimit != 0) && (len(in.Paths) > 0 || in.FilesFrom != "") {
+		return errors.New("builds_page and builds_limit cannot be combined with paths or files_from")
+	}
+	if _, err := optionalPage(in.BuildsPage); err != nil {
+		return err
+	}
+	if _, err := optionalCount("builds_limit", in.BuildsLimit, maxBuilds, maxBuilds); err != nil {
+		return err
 	}
 	return nil
 }
@@ -119,16 +130,17 @@ func (t *tools) summarizePullRequest(repo string, pr bitbucket.PullRequest) pull
 
 type pullRequestView struct {
 	pullRequestSummary
-	Description       string            `json:"description,omitempty" jsonschema:"only without paths and files_from, as are reviewers and builds"`
+	Description       string            `json:"description,omitempty" jsonschema:"only on the initial overview, without paths, files_from or a later builds_page, as are reviewers"`
 	CloseSourceBranch bool              `json:"close_source_branch" jsonschema:"the source branch is deleted when the pull request is merged"`
 	MergeCommit       string            `json:"merge_commit,omitempty"`
 	ClosedBy          string            `json:"closed_by,omitempty"`
 	DeclineReason     string            `json:"decline_reason,omitempty"`
 	Reviewers         []reviewerView    `json:"reviewers,omitempty"`
-	Builds            []buildView       `json:"builds,omitempty" jsonschema:"results reported for the pull request, such as pipeline runs; the latest 50, newest first"`
+	Builds            []buildView       `json:"builds,omitempty" jsonschema:"one page of results reported for the pull request, such as pipeline runs, newest first; pass builds_next_page as builds_page for more"`
 	BuildsTotal       int               `json:"builds_total,omitempty" jsonschema:"how many results were reported, when there are more than builds shows"`
 	BuildsTruncated   bool              `json:"builds_truncated,omitempty" jsonschema:"more build results exist; the total may be unknown when Bitbucket omits it"`
-	Files             []changedFileView `json:"files,omitempty" jsonschema:"without paths: the files the pull request changes, 200 a page; pass some as paths to see their diff"`
+	BuildsNextPage    int               `json:"builds_next_page,omitempty"`
+	Files             []changedFileView `json:"files,omitempty" jsonschema:"without paths or a later builds_page: the files the pull request changes, 200 a page; pass some as paths to see their diff"`
 	FilesNext         string            `json:"files_next,omitempty" jsonschema:"set when more files follow: pass it as files_from to list the next page"`
 	FilesTotal        int               `json:"files_total,omitempty" jsonschema:"how many files the pull request changes, when Bitbucket reports the total"`
 	FilesError        string            `json:"files_error,omitempty" jsonschema:"why the changed files could not be listed, such as Bitbucket timing out on a very large pull request"`
@@ -155,6 +167,10 @@ func (t *tools) getPullRequest(ctx context.Context, _ *mcp.CallToolRequest, in g
 	}
 	if pr.ClosedBy != nil {
 		v.ClosedBy = pr.ClosedBy.DisplayName
+	}
+	if in.BuildsPage > 1 {
+		err = t.describePullRequestBuilds(ctx, in, &v)
+		return nil, v, err
 	}
 	// The whole diff of a pull request is often too long to read at once; its files show
 	// which diffs to ask for.
@@ -196,16 +212,8 @@ func (t *tools) describePullRequest(ctx context.Context, in getPullRequestInput,
 	if in.FilesFrom == "" {
 		v.Description = pr.Summary.Raw
 		v.Reviewers = viewReviewers(pr.Participants)
-		var statuses bitbucket.Page[bitbucket.CommitStatus]
-		if statuses, err = t.bb.PullRequestStatuses(ctx, in.Repo, in.PullRequest, maxBuilds); err != nil {
+		if err = t.describePullRequestBuilds(ctx, in, v); err != nil {
 			return err
-		}
-		v.BuildsTruncated = statuses.More
-		if statuses.Total != nil && *statuses.Total > len(statuses.Values) {
-			v.BuildsTotal = *statuses.Total
-		}
-		for _, s := range statuses.Values {
-			v.Builds = append(v.Builds, buildView{Name: s.Name, State: s.State, Description: s.Description, URL: s.URL})
 		}
 	}
 	// Bitbucket gives up on the files of a very large pull request; the rest of the result still
@@ -233,6 +241,30 @@ func (t *tools) describePullRequest(ctx context.Context, in getPullRequestInput,
 	}
 	if stats.More {
 		v.FilesNext = version + "@" + strconv.Itoa(offset+len(stats.Values))
+	}
+	return nil
+}
+
+func (t *tools) describePullRequestBuilds(ctx context.Context, in getPullRequestInput, v *pullRequestView) error {
+	page, err := optionalPage(in.BuildsPage)
+	if err != nil {
+		return err
+	}
+	limit, err := optionalCount("builds_limit", in.BuildsLimit, maxBuilds, maxBuilds)
+	if err != nil {
+		return err
+	}
+	statuses, err := t.bb.PullRequestStatuses(ctx, in.Repo, in.PullRequest, page, limit)
+	if err != nil {
+		return err
+	}
+	v.BuildsTruncated = statuses.More
+	v.BuildsNextPage = nextPage(page, statuses.More)
+	if statuses.Total != nil && *statuses.Total > len(statuses.Values) {
+		v.BuildsTotal = *statuses.Total
+	}
+	for _, s := range statuses.Values {
+		v.Builds = append(v.Builds, buildView{Name: s.Name, State: s.State, Description: s.Description, URL: s.URL})
 	}
 	return nil
 }
