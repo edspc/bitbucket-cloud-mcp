@@ -138,6 +138,10 @@ func (c *Client) RunPipeline(ctx context.Context, repo string, r RunRequest) (Pi
 	return p, err
 }
 
+func (c *Client) StopPipeline(ctx context.Context, repo, uuid string) error {
+	return c.call(ctx, http.MethodPost, c.repoPath(repo, "pipelines", uuid, "stopPipeline"), nil, nil)
+}
+
 // PipelineFilter picks the pipelines to list; an empty field picks any. Values are written the
 // way the pipelines API filters them, in upper case.
 type PipelineFilter struct {
