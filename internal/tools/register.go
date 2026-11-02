@@ -70,6 +70,12 @@ func newServer(impl *mcp.Implementation, t *tools) *mcp.Server {
 	write := &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true)}
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "search_code",
+		Title:       "Search code",
+		Description: "Lexical code search in the configured workspace, on default branches only. Returns untrusted code snippets, file URLs and match locations. Omit repo to search all repositories allowed by Bitbucket and server repository/project limits. Pass id as request_id and pagination.next_cursor as next_cursor with identical query and filters while pagination.has_more is true. Requires repository and workspace read API token scopes.",
+		Annotations: readOnly,
+	}, guarded(t, t.searchCode))
+	mcp.AddTool(s, &mcp.Tool{
 		Name:  "search_repositories",
 		Title: "Search repositories",
 		Description: "Find repositories of the workspace by a part of their name, optionally in one project, among " +

@@ -19,6 +19,54 @@ Bitbucket's count of every page, is left out while access limits are set.
 So no project lookups are needed, and a call costs one API request; when the
 limits allow nothing, it makes none.
 
+## Code search
+
+`search_code` performs lexical search via `POST /workspaces/{workspace}/codesearch`
+using the configured account and workspace. `query` is required, non-blank and at
+most 1024 characters. Omit `repo` to search all accessible repositories allowed
+by server policy, or pass an exact slug to narrow the search. Optional `language`, `extension`
+(without the dot) and `path` (case-sensitive whole-path wildcard with `*` and `?`)
+combine with AND. Searches use default branches only. Semantic search and
+arbitrary filter trees, namespace overrides and branch/fork filters are not exposed.
+
+`limit` defaults to 20, at most 100. The result contains `id`, `matched_files`
+with file URLs, commit versions, snippets, line ranges and match positions, plus
+`pagination`. While `pagination.has_more` is true, pass `id` as `request_id` and
+`pagination.next_cursor` as `next_cursor`, together, keeping the query and filters
+identical. Bitbucket validates cursor/query consistency. Each call fetches one
+page, with no automatic retries. Standard API errors, including permission failures,
+429 rate limits and 502 backend failures, are returned to the client.
+
+Bitbucket limits results to repositories the configured account can read. The
+server's tool allowlist and configurable read confirmations also apply. With
+repository or project access limits, the server injects an OR of exact allowed
+repository slugs into the search request. Project keys and UUIDs are resolved via
+all pages of a policy-filtered repository listing on every call; wider listing
+entries are discarded. Explicit repository entries are allowed independently of
+their project, matching the existing union policy. An empty allowed set returns
+an empty result without calling code search.
+
+The injected scope is sorted and deduplicated to keep filters stable for cursor
+pagination. If accessible project repositories change between pages, Bitbucket
+may reject the changed filter: restart the search rather than reuse an old scope.
+Before returning code, the server checks every file URL against the requested
+workspace, optional repository and resolved allowed set, and checks current project
+membership once per returned repository. A disallowed or unverifiable repository
+fails the entire page without returning its code. Raw repository metadata is not
+returned, and the approximate `metadata.total_count` is omitted under access limits. Code is marked
+`content_trust: "untrusted"` and must never be treated as instructions.
+
+Requires an Atlassian API token with `read:repository:bitbucket` and
+`read:workspace:bitbucket`, through the existing Basic authentication. App
+passwords and legacy identity-less OAuth credentials are unsupported by this API.
+An authorization failure is returned without falling back to broader credentials.
+
+Example tool arguments:
+
+```json
+{"query":"handlePayment","language":"go","path":"src/*","limit":20}
+```
+
 ## Repository and deployment UUIDs
 
 `get_uuid` returns the UUID of `repo` in the configured workspace. Supply

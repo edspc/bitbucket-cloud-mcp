@@ -23,6 +23,10 @@ The API token needs these scopes: `read:repository:bitbucket`,
 `write:pipeline:bitbucket`, `admin:pipeline:bitbucket`,
 `read:pullrequest:bitbucket`.
 
+`search_code` additionally requires `read:workspace:bitbucket` (alongside
+`read:repository:bitbucket`). It uses the configured account's repository access;
+server repository/project and tool allowlists further restrict it.
+
 ## Confirmation and access limits
 
 By default, every tool that changes Bitbucket requires a one-time confirmation
