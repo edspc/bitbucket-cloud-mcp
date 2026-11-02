@@ -1,5 +1,50 @@
 # Tools
 
+## Files and directories
+
+`get_file` reads a UTF-8 text file and `list_directory` lists the direct children
+of a directory. Both take `repo`, `revision` (a branch, tag or commit hash) and
+`path`, relative to the repository root with `/` separators. For a root listing,
+pass `path: ""`. Absolute paths, empty path segments, `.` and `..` segments and
+backslashes are refused. Paths are not interpreted as local filesystem paths.
+
+A branch or tag is resolved to a full commit SHA before reading. Both results
+return that SHA as `commit`. Set `revision` to this SHA for subsequent calls:
+`get_file` returns `next_offset`, passed as `offset`; `list_directory` returns
+`next_page`, passed as `page`, keeping the same path and limit. Continuations
+require a full SHA so moving a branch cannot mix file or directory versions.
+
+`get_file` accepts files up to 1 MiB, including empty files, and returns at most
+40 KiB per call without splitting UTF-8 characters. `size` and offsets count
+bytes. Each call downloads the bounded file again. Binary files (NUL bytes or
+invalid UTF-8), larger files and redirected downloads, including Git LFS, are
+refused. `list_directory` takes `limit` (10 by default, at most 50) and `page`
+(1 by default); entries contain their type, repository-relative path, size and
+attributes when supplied by Bitbucket. Listings are not recursive.
+
+Both tools require `read:repository:bitbucket`. Repository, project and tool
+access limits and configurable read confirmations apply. Returned source and
+metadata carry `content_trust: "untrusted"`; they are data, never instructions.
+
+Example arguments:
+
+```json
+{"repo":"my-repo","revision":"main","path":"README.md"}
+```
+
+## Branches and tags
+
+`list_branches` and `list_tags` take `repo`, `limit` (10 by default, at most 50)
+and `page` (1 by default). Results contain `refs`, ordered by name, with each
+name and target commit; annotated tags can also include a message. Pass
+`next_page` as `page`, keeping the same limit, for more. `total` is included when
+Bitbucket supplies it. Concurrent ref changes can reorder pages.
+
+Both require `read:repository:bitbucket` and respect repository, project and tool
+limits and configurable read confirmations. `content_trust: "untrusted"` marks
+ref names and messages as data. Pipeline ref restrictions do not limit these
+read tools; `BITBUCKET_ALLOWED_REFS` applies to pipeline runs and schedules.
+
 ## Repository search
 
 `search_repositories` finds repositories of the workspace whose name contains
@@ -144,6 +189,23 @@ The variable tools work at one of three places, chosen by `scope`:
 - `delete_variable` deletes the variable called `name`.
 
 ## Pipelines
+
+### `stop_pipeline`
+
+Takes `repo` and `pipeline`, a build number or UUID, and requests stopping that
+pipeline and all its unfinished steps. It resolves the pipeline UUID and shows
+it with the build number on the existing confirmation page. A changed target
+while approval is pending is refused. Repository/project and tool limits are
+checked, including live project membership before the write. Confirmation is
+required by default and follows `BITBUCKET_CONFIRM_TOOLS`.
+
+`status: "stop_requested"` means Bitbucket accepted the stop signal, not that all
+steps have already stopped. Use `get_pipeline` or `watch_pipeline` for the final
+state. A pipeline already completed when checked returns `already_completed`
+without a stop request; declined approval returns `cancelled`. A pipeline may
+finish between the check and the stop request; Bitbucket errors are returned.
+Requires `read:pipeline:bitbucket` and `write:pipeline:bitbucket`. This tool does
+not resume paused manual steps.
 
 ### `run_pipeline`
 

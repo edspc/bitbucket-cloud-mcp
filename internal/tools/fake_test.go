@@ -69,6 +69,8 @@ type fakeBitbucket struct {
 	// onPipelineGet runs, with the lock held, before the n-th GET of a single pipeline is
 	// answered, so a test can move a pipeline along while it is watched.
 	onPipelineGet func(n int)
+
+	pipelineStopStatus int // a failure the stop endpoint answers with
 }
 
 // fakeChange is how a pull request changes one file.
@@ -558,6 +560,18 @@ func (f *fakeBitbucket) handler(t *testing.T) http.Handler {
 			return
 		}
 		writeJSON(w, p)
+	})
+	mux.HandleFunc("POST "+repo+"/pipelines/{id}/stopPipeline", func(w http.ResponseWriter, r *http.Request) {
+		if f.pipelineStopStatus != 0 {
+			w.WriteHeader(f.pipelineStopStatus)
+			return
+		}
+		p := f.findRun(r.PathValue("repo"), r.PathValue("id"))
+		if p == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET "+repo+"/pipelines/{id}/steps/{$}", func(w http.ResponseWriter, r *http.Request) {
 		page(w, f.steps[r.PathValue("id")])

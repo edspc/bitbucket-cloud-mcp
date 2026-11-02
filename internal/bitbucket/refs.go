@@ -56,7 +56,7 @@ func (c *Client) PipelineCommit(ctx context.Context, repo, refType, refName, com
 // fullSHA checks that Bitbucket answered with a full commit hash.
 func fullSHA(hash string) (string, error) {
 	if len(hash) != 40 || strings.Trim(hash, "0123456789abcdefABCDEF") != "" {
-		return "", fmt.Errorf("bitbucket returned no full commit SHA for the pipeline; nothing changed")
+		return "", fmt.Errorf("bitbucket returned no full commit SHA; nothing changed")
 	}
 	return strings.ToLower(hash), nil
 }
