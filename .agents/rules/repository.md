@@ -3,7 +3,8 @@
 - Keep README.md as the project overview, installation guide and documentation
   index. Detailed documentation lives in `docs/`; AGENTS.md links to README.md
   and the rules. Rules live only in `.agents/rules/`. Task workflows live in
-  `.agents/skills/`. The Claude entry points are symlinks, not separate copies.
+  `.agents/skills/`. The `.claude/rules` and `.claude/skills`
+  directories are compatibility symlinks, not separate copies.
 - Docs, code and comments are in English.
 - Do not add a dependency for what a few lines of code can do. Ask before
   adding any new dependency.

@@ -36,5 +36,5 @@ read [Code and security](.agents/rules/code.md). The rules live in
 - [Diagnose Bitbucket API failures](.agents/skills/diagnose-bitbucket-api/SKILL.md)
 - [Release the MCP server](.agents/skills/release-mcp/SKILL.md)
 
-`CLAUDE.md` points here. `.claude/rules` and `.claude/skills` point to the same
-canonical directories for Claude compatibility.
+`.claude/rules` and `.claude/skills` are compatibility symlinks to the canonical
+`.agents` directories.
