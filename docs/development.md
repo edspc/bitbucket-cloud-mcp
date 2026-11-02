@@ -64,4 +64,4 @@ workflow, and that the hook uses the same go-release-actions commit.
 
 ## Change workflow
 
-See [.claude/rules/lifecycle.md](../.claude/rules/lifecycle.md).
+See [.agents/rules/lifecycle.md](../.agents/rules/lifecycle.md).
