@@ -34,17 +34,17 @@ tag; it skips the source-version check and never publishes. The executable in a
 snapshot still reports its committed source version.
 
 Both commands build four executables with `CGO_ENABLED=0` and `-trimpath`.
-Locally, each executable keeps the name `bitbucket-custom-mcp`, for example at
-`dist/bitbucket-custom-mcp_linux_amd64_v1/bitbucket-custom-mcp`. For exact paths
+Locally, each executable keeps the name `bitbucket-cloud-mcp`, for example at
+`dist/bitbucket-cloud-mcp_linux_amd64_v1/bitbucket-cloud-mcp`. For exact paths
 and their corresponding release asset names, read the `path` and `name` fields
 of entries with `extra.Format` set to `binary` in `dist/artifacts.json`.
 
 The GitHub Release asset names are:
 
-- `bitbucket-custom-mcp-darwin-arm64`
-- `bitbucket-custom-mcp-darwin-amd64`
-- `bitbucket-custom-mcp-linux-arm64`
-- `bitbucket-custom-mcp-linux-amd64`
+- `bitbucket-cloud-mcp-darwin-arm64`
+- `bitbucket-cloud-mcp-darwin-amd64`
+- `bitbucket-cloud-mcp-linux-arm64`
+- `bitbucket-cloud-mcp-linux-amd64`
 
 Only these binaries are uploaded as release assets. Project, Go and module license
 notices are included in the release notes. GoReleaser does not upload source

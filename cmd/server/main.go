@@ -11,8 +11,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/edspc/bitbucket-custom-mcp/internal/bitbucket"
-	"github.com/edspc/bitbucket-custom-mcp/internal/tools"
+	"github.com/edspc/bitbucket-cloud-mcp/internal/bitbucket"
+	"github.com/edspc/bitbucket-cloud-mcp/internal/tools"
 )
 
 func main() {
@@ -40,7 +40,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	s := tools.NewServer(ctx, &mcp.Implementation{Name: "bitbucket-custom-mcp", Version: version}, bb, log, policy)
+	s := tools.NewServer(ctx, &mcp.Implementation{Name: "bitbucket-cloud-mcp", Version: version}, bb, log, policy)
 	log.Info("serving MCP over stdio", "workspace", cfg.Workspace)
 	return s.Run(ctx, &mcp.StdioTransport{})
 }

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/edspc/bitbucket-custom-mcp/internal/bitbucket"
+	"github.com/edspc/bitbucket-cloud-mcp/internal/bitbucket"
 )
 
 // addPullRequests adds pull requests 8 to 11 of repo-a next to the merged 7 of addPullRequest,

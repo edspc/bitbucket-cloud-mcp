@@ -1,6 +1,6 @@
 # CLI
 
-`bitbucket-custom-mcp --version` prints `bitbucket-custom-mcp 0.5.2` and exits.
+`bitbucket-cloud-mcp --version` prints `bitbucket-cloud-mcp 0.5.2` and exits.
 `--help` (or `-h`) prints usage and configuration names. These commands need no
 credentials and ignore environment configuration, even malformed policy arrays.
 Unknown arguments fail. With no arguments the executable serves MCP over stdio;

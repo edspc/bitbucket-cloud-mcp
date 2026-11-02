@@ -1,5 +1,5 @@
 version: 2
-project_name: bitbucket-custom-mcp
+project_name: bitbucket-cloud-mcp
 
 before:
   hooks:
@@ -14,7 +14,7 @@ before:
 
 builds:
   - main: ./cmd/server
-    binary: bitbucket-custom-mcp
+    binary: bitbucket-cloud-mcp
     env:
       - CGO_ENABLED=0
     goos: [darwin, linux]
@@ -42,7 +42,7 @@ changelog:
 release:
   github:
     owner: edspc
-    name: bitbucket-custom-mcp
+    name: bitbucket-cloud-mcp
   name_template: '{{ .Tag }}'
   footer: |
     <details>
