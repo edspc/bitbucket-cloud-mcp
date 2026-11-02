@@ -7,7 +7,7 @@ const secretPageHTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Title}} · bitbucket-custom-mcp</title>
+<title>{{.Title}} · bitbucket-cloud-mcp</title>
 {{if .Refresh}}<meta http-equiv="refresh" content="{{.Refresh}}">{{end}}
 <style>
 :root {
@@ -95,7 +95,7 @@ footer p { margin: 0; }
 <header class="hero">
   <div class="brand">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16l-2 13H6L4 7z"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/></svg>
-    <span>bitbucket-custom-mcp</span>
+    <span>bitbucket-cloud-mcp</span>
     <span class="local">local page</span>
   </div>
   <h1>{{.Title}}</h1>

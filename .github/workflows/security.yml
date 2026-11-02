@@ -60,4 +60,4 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: >-
           docker run --rm --volume "$PWD:/src:ro" --workdir /src --entrypoint /root/osv-scanner "$OSV_SCANNER"
-          scan source --experimental-plugins=go/binary bin/bitbucket-custom-mcp
+          scan source --experimental-plugins=go/binary bin/bitbucket-cloud-mcp

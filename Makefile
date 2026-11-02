@@ -1,4 +1,4 @@
-BINARY := bitbucket-custom-mcp
+BINARY := bitbucket-cloud-mcp
 BINDIR ?= $(HOME)/.local/bin
 
 .PHONY: build install lint test smoke release release-snapshot snyk osv clean

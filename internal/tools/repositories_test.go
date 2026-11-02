@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/edspc/bitbucket-custom-mcp/internal/bitbucket"
+	"github.com/edspc/bitbucket-cloud-mcp/internal/bitbucket"
 )
 
 // addRepositories lists api and web in APP, ops in OPS and tools in no project.

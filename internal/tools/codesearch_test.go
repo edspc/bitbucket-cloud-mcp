@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/edspc/bitbucket-custom-mcp/internal/bitbucket"
+	"github.com/edspc/bitbucket-cloud-mcp/internal/bitbucket"
 )
 
 func TestSearchCodeRequestAndPagination(t *testing.T) {

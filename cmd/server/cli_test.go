@@ -15,8 +15,8 @@ func TestCommandLine(t *testing.T) {
 		wantErr bool
 	}{
 		{"stdio", nil, false, "", false},
-		{"version", []string{"--version"}, true, "bitbucket-custom-mcp " + version + "\n", false},
-		{"help", []string{"--help"}, true, "Usage:", false},
+		{"version", []string{"--version"}, true, "bitbucket-cloud-mcp " + version + "\n", false},
+		{"help", []string{"--help"}, true, "Usage: bitbucket-cloud-mcp", false},
 		{"short help", []string{"-h"}, true, "Usage:", false},
 		{"repository or project", []string{"--help"}, true, "either list allows a repository", false},
 		{"unknown", []string{"--unknown"}, true, "", true},

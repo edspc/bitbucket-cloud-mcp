@@ -8,7 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/edspc/bitbucket-custom-mcp/internal/bitbucket"
+	"github.com/edspc/bitbucket-cloud-mcp/internal/bitbucket"
 )
 
 // cronFields is how many fields Bitbucket's cron patterns have: they start with seconds and

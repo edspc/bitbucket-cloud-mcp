@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/edspc/bitbucket-custom-mcp/internal/bitbucket"
+	"github.com/edspc/bitbucket-cloud-mcp/internal/bitbucket"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

@@ -5,7 +5,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/edspc/bitbucket-custom-mcp/internal/bitbucket"
+	"github.com/edspc/bitbucket-cloud-mcp/internal/bitbucket"
 )
 
 type searchRepositoriesInput struct {

@@ -19,9 +19,9 @@ func commandLine(args []string, out io.Writer) (bool, error) {
 	var err error
 	switch args[0] {
 	case "--version":
-		_, err = fmt.Fprintf(out, "bitbucket-custom-mcp %s\n", version)
+		_, err = fmt.Fprintf(out, "bitbucket-cloud-mcp %s\n", version)
 	case "--help", "-h":
-		_, err = io.WriteString(out, `Usage: bitbucket-custom-mcp [--help | --version]
+		_, err = io.WriteString(out, `Usage: bitbucket-cloud-mcp [--help | --version]
 
 Run without arguments to serve MCP over stdin/stdout.
 The MCP client starts this process; no background service is needed.
@@ -43,7 +43,7 @@ Optional browser confirmation (JSON array; unset or [] confirms every write):
   Secret entry always requires the browser page.
 
 --help and --version do not require environment configuration.
-Documentation: https://github.com/edspc/bitbucket-custom-mcp#readme
+Documentation: https://github.com/edspc/bitbucket-cloud-mcp#readme
 `)
 	default:
 		err = fmt.Errorf("unknown argument %q; use --help", args[0])

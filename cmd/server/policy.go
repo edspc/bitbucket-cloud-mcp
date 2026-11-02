@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/edspc/bitbucket-custom-mcp/internal/tools"
+	"github.com/edspc/bitbucket-cloud-mcp/internal/tools"
 )
 
 func policyFromEnv() (tools.Policy, error) {

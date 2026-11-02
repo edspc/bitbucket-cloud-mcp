@@ -18,7 +18,7 @@ import (
 func TestInstalledBinary(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
-	binary := filepath.Join(t.TempDir(), "bitbucket-custom-mcp")
+	binary := filepath.Join(t.TempDir(), "bitbucket-cloud-mcp")
 	build := exec.CommandContext(ctx, "go", "build", "-trimpath", "-o", binary, ".")
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, output)
@@ -46,7 +46,7 @@ func TestInstalledBinary(t *testing.T) {
 			if err != nil || stderr.Len() != 0 {
 				t.Fatalf("informational command: %v, stderr=%q", err, stderr.String())
 			}
-			if arg == "--version" && stdout.String() != "bitbucket-custom-mcp "+version+"\n" || arg != "--version" && !strings.Contains(stdout.String(), "Usage:") {
+			if arg == "--version" && stdout.String() != "bitbucket-cloud-mcp "+version+"\n" || arg != "--version" && !strings.Contains(stdout.String(), "Usage:") {
 				t.Fatalf("unexpected output: %q", stdout.String())
 			}
 		})
@@ -61,7 +61,7 @@ func TestInstalledBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = session.Close() })
-	if info := session.InitializeResult().ServerInfo; info.Name != "bitbucket-custom-mcp" || info.Version != version {
+	if info := session.InitializeResult().ServerInfo; info.Name != "bitbucket-cloud-mcp" || info.Version != version {
 		t.Fatalf("server info = %+v", info)
 	}
 	list, err := session.ListTools(ctx, nil)

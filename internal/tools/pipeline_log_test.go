@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/edspc/bitbucket-custom-mcp/internal/bitbucket"
+	"github.com/edspc/bitbucket-cloud-mcp/internal/bitbucket"
 )
 
 // failedRun adds a completed pipeline of repo-a whose second of three steps failed.

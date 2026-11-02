@@ -50,10 +50,10 @@ jobs:
         uses: edspc/go-release-actions/check-binaries@14f3e2c0b2fa2023d2ac52a8d72cd760cf53c96c
         with:
           names: |
-            bitbucket-custom-mcp-darwin-arm64
-            bitbucket-custom-mcp-darwin-amd64
-            bitbucket-custom-mcp-linux-arm64
-            bitbucket-custom-mcp-linux-amd64
+            bitbucket-cloud-mcp-darwin-arm64
+            bitbucket-cloud-mcp-darwin-amd64
+            bitbucket-cloud-mcp-linux-arm64
+            bitbucket-cloud-mcp-linux-amd64
           notices: .scratch/THIRD_PARTY_LICENSES
           combined: .scratch/release-licenses.txt
           required-notices: github.com/modelcontextprotocol/go-sdk@*/LICENSE

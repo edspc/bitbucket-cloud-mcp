@@ -3,7 +3,7 @@
 1. [Install the binary](../README.md), then find its absolute path:
 
    ```sh
-   command -v bitbucket-custom-mcp
+   command -v bitbucket-cloud-mcp
    ```
 
 2. Store the Atlassian API token in 1Password and copy its secret reference,
@@ -16,10 +16,10 @@
    absolute path from step 1 (`~` is not expanded inside the JSON):
 
    ```sh
-   claude mcp add-json --scope user bitbucket-custom '{
+   claude mcp add-json --scope user bitbucket-cloud '{
      "type": "stdio",
      "command": "op",
-     "args": ["run", "--no-masking", "--", "/absolute/path/to/bitbucket-custom-mcp"],
+     "args": ["run", "--no-masking", "--", "/absolute/path/to/bitbucket-cloud-mcp"],
      "env": {
        "BITBUCKET_WORKSPACE": "<workspace>",
        "BITBUCKET_EMAIL": "<atlassian-email>",
@@ -32,7 +32,7 @@
    starts the server with the real values. `--no-masking` is required: masking
    rewrites the child's stdout, which carries the MCP protocol.
 
-4. Check: `claude mcp list` shows `bitbucket-custom` as connected, and `/mcp`
+4. Check: `claude mcp list` shows `bitbucket-cloud` as connected, and `/mcp`
    in a Claude Code session lists its tools. 1Password asks to approve access
    when the server starts.
 
