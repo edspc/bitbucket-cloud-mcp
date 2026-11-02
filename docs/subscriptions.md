@@ -12,6 +12,10 @@ leaves, polling fails five times in a row or 24 hours pass. Subscriptions
 share the polling limit of `watch_pipeline`; a pipeline that has already
 completed or paused is accepted but not polled.
 
+`watch_pipeline` can override its own base interval with `poll_interval_seconds`.
+That per-call setting does not change the 30-second subscription interval or its
+doubling for project restrictions.
+
 A refusal over the [rate limit](subscriptions.md#rate-limit) is not a failure: polling rests
 as long as the response says, but at least one poll interval, or else for two
 intervals, doubling with every refusal in a row up to 30 intervals, and then goes on. When
