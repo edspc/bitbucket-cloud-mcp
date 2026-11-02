@@ -23,6 +23,12 @@ func (c *Client) ListSteps(ctx context.Context, repo, pipelineUUID string) ([]St
 	return list[Step](ctx, c, c.repoPath(repo, "pipelines", pipelineUUID, "steps")+"/")
 }
 
+func (c *Client) ListStepsPage(ctx context.Context, repo, pipelineUUID string, page, limit int) (Page[Step], error) {
+	q := url.Values{"page": {strconv.Itoa(page)}, "pagelen": {strconv.Itoa(limit)}}
+	p, err := readPage[Step](ctx, c, APIURL+c.repoPath(repo, "pipelines", pipelineUUID, "steps")+"/?"+q.Encode(), limit)
+	return Page[Step]{Values: p.Values, Total: p.Size, More: p.Next != ""}, err
+}
+
 // StepURL is the page of a step on the Bitbucket website, with its full log.
 func (c *Client) StepURL(repo string, buildNumber int, stepUUID string) string {
 	return c.repoWebURL(repo, "pipelines", "results", strconv.Itoa(buildNumber), "steps", stepUUID)

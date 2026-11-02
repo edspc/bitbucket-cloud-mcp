@@ -366,7 +366,7 @@ func (f *fakeBitbucket) handler(t *testing.T) http.Handler {
 	// Unlike Bitbucket, the fake returns secured values too, so tests show that the tools
 	// themselves never pass them on.
 	listVars := func(w http.ResponseWriter, r *http.Request) {
-		page(w, f.vars[varsKey(r)])
+		writeCollectionPage(w, r, f.vars[varsKey(r)])
 	}
 	createVar := func(w http.ResponseWriter, r *http.Request) {
 		var v bitbucket.Variable
@@ -411,7 +411,7 @@ func (f *fakeBitbucket) handler(t *testing.T) http.Handler {
 	}
 
 	mux.HandleFunc("GET "+repo+"/pipelines_config/schedules", func(w http.ResponseWriter, r *http.Request) {
-		page(w, f.schedules[r.PathValue("repo")])
+		writeCollectionPage(w, r, f.schedules[r.PathValue("repo")])
 	})
 	mux.HandleFunc("POST "+repo+"/pipelines_config/schedules", func(w http.ResponseWriter, r *http.Request) {
 		var s bitbucket.Schedule
@@ -574,7 +574,7 @@ func (f *fakeBitbucket) handler(t *testing.T) http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET "+repo+"/pipelines/{id}/steps/{$}", func(w http.ResponseWriter, r *http.Request) {
-		page(w, f.steps[r.PathValue("id")])
+		writeCollectionPage(w, r, f.steps[r.PathValue("id")])
 	})
 	serveLog := func(w http.ResponseWriter, r *http.Request) {
 		f.logRanges = append(f.logRanges, r.Header.Get("Range"))

@@ -83,7 +83,7 @@ func (t *tools) scopeSnapshot(ctx context.Context, uri string) (string, error) {
 		data = result
 	case "pullrequest":
 		id, _ := strconv.Atoi(selector)
-		statuses, err := t.bb.PullRequestStatuses(ctx, repo, id, defaultListLimit)
+		statuses, err := t.bb.PullRequestStatuses(ctx, repo, id, 1, defaultListLimit)
 		if err != nil {
 			return "", err
 		}

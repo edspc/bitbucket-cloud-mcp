@@ -115,13 +115,13 @@ func (c *Client) GetPullRequest(ctx context.Context, repo string, id int) (PullR
 	return pr, err
 }
 
-// PullRequestStatuses reads only the first page of build results, the newest first: Bitbucket
+// PullRequestStatuses reads one page of build results, the newest first: Bitbucket
 // lists the oldest first, and on a busy pull request those are long out of date. A page holds
 // at most 50.
-func (c *Client) PullRequestStatuses(ctx context.Context, repo string, id, limit int) (Page[CommitStatus], error) {
-	q := url.Values{"pagelen": {strconv.Itoa(limit)}, "sort": {"-created_on"}}
-	page, err := readPage[CommitStatus](ctx, c, APIURL+c.pullRequestPath(repo, id, "statuses")+"?"+q.Encode(), limit)
-	return Page[CommitStatus]{Values: page.Values, Total: page.Size, More: page.Next != ""}, err
+func (c *Client) PullRequestStatuses(ctx context.Context, repo string, id, page, limit int) (Page[CommitStatus], error) {
+	q := url.Values{"page": {strconv.Itoa(page)}, "pagelen": {strconv.Itoa(limit)}, "sort": {"-created_on"}}
+	p, err := readPage[CommitStatus](ctx, c, APIURL+c.pullRequestPath(repo, id, "statuses")+"?"+q.Encode(), limit)
+	return Page[CommitStatus]{Values: p.Values, Total: p.Size, More: p.Next != ""}, err
 }
 
 // PullRequestDiffStat reads only the requested range of files, not preceding pages. We request
