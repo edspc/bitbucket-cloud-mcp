@@ -260,8 +260,13 @@ for a manual step) or `COMPLETED/FAILED`.
 ### `watch_pipeline`
 
 Waits until the pipeline completes, pauses for a manual step or
-`timeout_seconds` pass (600 by default, at most 3600), polling every 30
-seconds (60 with project restrictions). It returns the outcome (`completed`,
+`timeout_seconds` pass (600 by default, at most 3600). `poll_interval_seconds`
+sets the base interval for this call, from 1 to 60 seconds; omitted or zero
+keeps the default of 30 seconds. Project restrictions double the base interval,
+so a value of 5 polls every 10 seconds with project limits. The first status
+check is immediate, and the timeout still bounds the call when it is shorter
+than the interval. The interval belongs to this call and does not alter other
+watches or resource subscriptions. It returns the outcome (`completed`,
 `paused` or `timeout`), every
 status change of the pipeline and its steps seen on the way, and the final
 status. When the client sends a progress token, each poll is also reported as
@@ -304,17 +309,29 @@ did not finish. Client cancellation remains an error.
 
 A poll costs two API requests (up to four with project restrictions; two for a
 repository listed in `BITBUCKET_ALLOWED_REPOS`), and Bitbucket
-allows 1,000 requests an hour to
-repository data, so at most two pipelines are polled at a time, by
+allows 1,000 requests an hour to repository data. To limit shared polling load,
+at most two pipelines are polled at a time, by
 `watch_pipeline` calls and [subscriptions](subscriptions.md) together;
 beyond that both are refused until one ends.
 
 Streaming adds one log API request per unfinished tracked step on each poll.
 The wait after that poll is multiplied by `(2 + log requests) / 2` to keep the
-same request budget: one log read gives 45 seconds, two give 60 seconds, before
+same request budget for the selected interval: at the default 30 seconds,
+one log read gives 45 seconds, two give 60 seconds, before
 the doubling for project restrictions. Status progress heartbeats continue at the
-original interval while waiting, without additional API requests. At most 100
+selected base interval (including the doubling for project restrictions) while
+waiting, without additional API requests. At most 100
 started steps are tracked; the timeout still bounds the entire call.
+
+Short intervals consume the account's shared API allowance faster. Bitbucket can
+return `429`; the watch returns that error with the existing retry guidance.
+The shared limit of two concurrent watches/subscriptions still applies.
+
+Example arguments for a five-second base interval:
+
+```json
+{"repo":"my-repo","pipeline":"42","poll_interval_seconds":5,"timeout_seconds":600}
+```
 
 ### `get_pipeline_log`
 

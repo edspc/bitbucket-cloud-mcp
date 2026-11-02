@@ -14,21 +14,23 @@ import (
 
 const (
 	// A poll costs two requests, and Bitbucket allows a user 1,000 requests an hour to
-	// repository data. Polling at most maxPolling pipelines at a time, subscriptions and
-	// watch_pipeline calls together, every pollInterval takes 480 of them at most and leaves
-	// the rest to the other tools. Project restrictions can double the requests, unless a
-	// repository is allowed by name, so they always double the interval.
-	pollInterval        = 30 * time.Second
-	maxPolling          = 2
-	defaultWatchSeconds = 600
-	maxWatchSeconds     = 3600
+	// repository data. At the default interval, at most maxPolling concurrent pipelines
+	// consume about 480 requests an hour, leaving room for other tools. Shorter explicit
+	// intervals consume the allowance faster. Project restrictions can double requests,
+	// unless a repository is allowed by name, so they always double the base interval.
+	pollInterval           = 30 * time.Second
+	maxPolling             = 2
+	defaultWatchSeconds    = 600
+	maxWatchSeconds        = 3600
+	maxPollIntervalSeconds = 60
 )
 
 type watchPipelineInput struct {
 	pipelineRef
-	TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema:"how long to wait for the pipeline to finish; 600 when omitted, at most 3600"`
-	StreamLogs     bool   `json:"stream_logs,omitempty" jsonschema:"stream new log lines through progress notifications; requires a client progress token. False by default"`
-	Step           string `json:"step,omitempty" jsonschema:"with stream_logs, follow only this step name or UUID; otherwise all started steps"`
+	TimeoutSeconds      int    `json:"timeout_seconds,omitempty" jsonschema:"how long to wait for the pipeline to finish; 600 when omitted, at most 3600"`
+	PollIntervalSeconds int    `json:"poll_interval_seconds,omitempty" jsonschema:"base polling interval for this call in seconds; 30 when omitted or zero, otherwise 1 to 60. Doubled with project restrictions and increased for additional log requests; shorter intervals consume API rate limits faster"`
+	StreamLogs          bool   `json:"stream_logs,omitempty" jsonschema:"stream new log lines through progress notifications; requires a client progress token. False by default"`
+	Step                string `json:"step,omitempty" jsonschema:"with stream_logs, follow only this step name or UUID; otherwise all started steps"`
 }
 
 type watchPipelineResult struct {
@@ -55,6 +57,10 @@ func (t *tools) watchPipeline(ctx context.Context, req *mcp.CallToolRequest, in 
 	}
 	// Checked before the conversion to a duration, which would overflow for huge values.
 	seconds, err := optionalCount("timeout_seconds", in.TimeoutSeconds, defaultWatchSeconds, maxWatchSeconds)
+	if err != nil {
+		return nil, watchPipelineResult{}, err
+	}
+	interval, err := t.watchInterval(in.PollIntervalSeconds)
 	if err != nil {
 		return nil, watchPipelineResult{}, err
 	}
@@ -150,10 +156,10 @@ func (t *tools) watchPipeline(ctx context.Context, req *mcp.CallToolRequest, in 
 		}
 		heartbeat := time.Duration(0)
 		if stream != nil {
-			heartbeat = t.pollInterval
+			heartbeat = interval
 		}
 		// Log reads slow API polling without slowing the progress heartbeat.
-		err = waitForWatchPoll(watchCtx, t.pollInterval*time.Duration(2+logReads)/2, heartbeat,
+		err = waitForWatchPoll(watchCtx, interval*time.Duration(2+logReads)/2, heartbeat,
 			func() error { return notify(summary(view)) })
 		if err != nil {
 			if ctx.Err() != nil {
@@ -169,6 +175,22 @@ func (t *tools) watchPipeline(ctx context.Context, req *mcp.CallToolRequest, in 
 			return nil, result, nil
 		}
 	}
+}
+
+// Each call owns its interval: changing the shared default would race with other watches
+// and subscriptions. The default has already been adjusted for project checks by newServer.
+func (t *tools) watchInterval(seconds int) (time.Duration, error) {
+	if seconds == 0 {
+		return t.pollInterval, nil
+	}
+	if seconds < 1 || seconds > maxPollIntervalSeconds {
+		return 0, fmt.Errorf("poll_interval_seconds must be between 1 and %d", maxPollIntervalSeconds)
+	}
+	interval := time.Duration(seconds) * time.Second
+	if t.policy.Projects != nil {
+		interval *= 2
+	}
+	return interval, nil
 }
 
 func waitForWatchPoll(ctx context.Context, delay, heartbeat time.Duration, notify func() error) error {
@@ -198,7 +220,7 @@ func waitForWatchPoll(ctx context.Context, delay, heartbeat time.Duration, notif
 func (t *tools) checkPollingSlot() error {
 	if len(t.watches)+t.watchCalls >= maxPolling {
 		return fmt.Errorf("%d pipelines are already polled for their status, by subscriptions or watch_pipeline calls, "+
-			"which is as many as Bitbucket's rate limit allows; wait for one to finish, unsubscribe, or use get_pipeline", maxPolling)
+			"which reaches the server's concurrency limit; wait for one to finish, unsubscribe, or use get_pipeline", maxPolling)
 	}
 	return nil
 }
