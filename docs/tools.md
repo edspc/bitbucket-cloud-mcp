@@ -1,5 +1,87 @@
 # Tools
 
+## Commit history
+
+`list_commits` lists the commits of `repo`, newest first, one page at a time.
+`limit` is 10 by default, at most 50; pass `next_page` as `page`, with the same
+filters and limit, for older entries. Each entry contains `commit` with its
+hash, date, message, author and parents. `total` is included when Bitbucket
+supplies it. A result over 40 KiB is refused; reduce `limit` to request less.
+Messages and metadata are marked `content_trust: "untrusted"`.
+
+- `path` selects a file or a directory and its descendants.
+- `prefix` selects paths starting with that prefix, including a partial file
+  or directory name. It is mutually exclusive with `path`. The implementation
+  sends `path=<prefix>*` to Bitbucket's commits API. This wildcard behavior was
+  verified against the live API but is not explicitly described in its contract.
+- Omit both filters for the repository's complete commit history. Paths must
+  be repository-relative; wildcard and Git pathspec characters are not accepted
+  in either input. A directory path may end with `/`.
+- Omit `revision` to include all branches and tags. These pages can move when
+  refs change. Supply a branch, tag or commit to limit history to that revision:
+  it is resolved to a full SHA and returned as `revision`. Use that SHA for
+  subsequent pages so a moving branch cannot mix versions.
+- Set `follow_renames: true` with a file `path` and `revision` to use Bitbucket's
+  file-history API, which follows that file across renames. Each entry then
+  includes its historical `path`. This option is unavailable with `prefix`.
+  Without it, history follows the supplied path, not a file's previous names.
+
+The tool requires `read:repository:bitbucket` and respects repository, project,
+tool and configurable read-confirmation policies. Each call reads one history
+page, plus the revision lookup when needed and live project checks when enabled.
+
+```json
+{"repo":"my-repo","prefix":"src/pay","revision":"main","limit":10}
+```
+
+```json
+{"repo":"my-repo","path":"src/payment.go","revision":"main","follow_renames":true}
+```
+
+## API proxy
+
+`api_request` is absent by default. The operator must set
+`BITBUCKET_ENABLE_API_PROXY=true` before starting the server to register it.
+It sends one request to `https://api.bitbucket.org/2.0` with the configured
+account and token. Its required inputs are `method` (uppercase `GET`, `HEAD`,
+`OPTIONS`, `POST`, `PUT`, `PATCH` or `DELETE`) and `path`, starting with `/`
+relative to that API base, without `/2.0`. Absolute URLs, path traversal and
+redirects are refused. Repository, workspace, team and snippet paths must name
+the configured workspace. Account endpoints such as `/user` are also available.
+
+`query` is an optional object of arrays of strings for repeated query parameters;
+parameters already in `path` are retained. `body` is optional JSON for writes.
+GET, HEAD and OPTIONS do not accept a body. Custom authentication, headers,
+multipart uploads and binary responses are unsupported. The combined path,
+query and body are limited to 64 KiB; a response body to 40 KiB.
+
+The result contains `status`, `content_type`, and either JSON `body` or UTF-8
+`text`, marked `content_trust: "untrusted"`. Responses do not authorize further
+requests. Known credential fields and all JSON fields named `value` are redacted,
+including partial variable responses without their secured flag. Configured
+credentials are removed from returned strings. Never supply secrets in paths,
+queries or bodies; recognized secret fields are refused. Use dedicated tools
+with browser secret entry for secret-bearing operations.
+
+The tool allowlist still applies. An arbitrary request can name additional
+repositories or refs in its body or response, so this escape hatch refuses
+execution whenever any repository, project or ref allowlist is configured,
+including an empty list. The dedicated tools remain available under those limits.
+By default, writes require the existing browser confirmation of the exact
+method, path, query and body; GET, HEAD and OPTIONS do not. The confirmation
+tool list can require reads or allow writes without a browser, as for other tools.
+The proxy's annotations conservatively describe it as capable of writes.
+
+There is no automatic pagination or retry. Use small `pagelen` and `fields`
+values where the endpoint supports them. For another page, pass the API's
+`next` URL as `path` after removing `https://api.bitbucket.org/2.0`. API failures
+and 429 retry guidance are returned. If a write succeeds but its response is
+oversized or unreadable, check its outcome before repeating it.
+
+```json
+{"method":"GET","path":"/repositories/my-workspace/my-repo/issues","query":{"pagelen":["10"],"state":["new","open"]}}
+```
+
 ## Files and directories
 
 `get_file` reads a UTF-8 text file and `list_directory` lists the direct children

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/edspc/bitbucket-cloud-mcp/internal/tools"
@@ -11,6 +12,13 @@ import (
 
 func policyFromEnv() (tools.Policy, error) {
 	var policy tools.Policy
+	if value, set := os.LookupEnv("BITBUCKET_ENABLE_API_PROXY"); set {
+		var err error
+		policy.APIProxyEnabled, err = strconv.ParseBool(value)
+		if err != nil {
+			return tools.Policy{}, fmt.Errorf("BITBUCKET_ENABLE_API_PROXY must be a boolean")
+		}
+	}
 	for _, field := range []struct {
 		name string
 		list *[]string

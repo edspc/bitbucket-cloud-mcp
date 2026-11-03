@@ -42,6 +42,10 @@ Optional browser confirmation (JSON array; unset or [] confirms every write):
   BITBUCKET_CONFIRM_TOOLS      Exact tool names; ["*"] confirms every tool
   Secret entry always requires the browser page.
 
+Optional API proxy (disabled by default):
+  BITBUCKET_ENABLE_API_PROXY   Set true to register api_request
+  Proxy requests require unrestricted repository/project/ref policy.
+
 --help and --version do not require environment configuration.
 Documentation: https://github.com/edspc/bitbucket-cloud-mcp#readme
 `)

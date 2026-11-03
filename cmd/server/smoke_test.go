@@ -68,6 +68,18 @@ func TestInstalledBinary(t *testing.T) {
 	if err != nil || len(list.Tools) == 0 {
 		t.Fatalf("list tools: %+v, %v", list, err)
 	}
+	foundHistory := false
+	for _, tool := range list.Tools {
+		if tool.Name == "api_request" {
+			t.Fatal("API proxy registered without explicit opt-in")
+		}
+		if tool.Name == "list_commits" {
+			foundHistory = true
+		}
+	}
+	if !foundHistory {
+		t.Fatal("commit history tool is missing")
+	}
 	if err = session.Close(); err != nil {
 		t.Fatalf("stdio shutdown: %v", err)
 	}

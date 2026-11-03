@@ -27,6 +27,22 @@ The API token needs these scopes: `read:repository:bitbucket`,
 `read:repository:bitbucket`). It uses the configured account's repository access;
 server repository/project and tool allowlists further restrict it.
 
+## Optional API proxy
+
+`BITBUCKET_ENABLE_API_PROXY=true` registers the `api_request` escape hatch.
+Unset or `false` leaves it absent; invalid boolean values stop startup.
+An allowed-tools entry or wildcard alone never enables it. Its token needs the
+scopes required by each requested API endpoint; enabling the tool does not grant
+additional Bitbucket permissions.
+
+The proxy uses server credentials, accepts non-secret JSON requests and returns
+bounded JSON or text with credential fields redacted. Writes require browser
+confirmation by default. It refuses execution when repository, project or ref
+allowlists are set, even to `[]`, because arbitrary bodies and responses cannot
+be checked with the dedicated tools' entity-specific policies. Keep the flag in
+the operator's environment, outside the model's control. See
+[API proxy](tools.md#api-proxy) for limits and examples.
+
 ## Confirmation and access limits
 
 By default, every tool that changes Bitbucket requires a one-time confirmation
