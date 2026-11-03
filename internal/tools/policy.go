@@ -16,6 +16,7 @@ import (
 // a repository either list allows is allowed. Tool lists use defaults when empty and accept
 // "*" for every tool. Ref limits apply to runs and schedules.
 type Policy struct {
+	APIProxyEnabled   bool // operator opt-in; never a tool argument
 	Repositories      []string
 	Projects          []string // exact project keys or UUIDs, checked by the client against live repository metadata
 	Tools             []string // empty allows all; otherwise exact names or "*"
@@ -130,9 +131,18 @@ func (p Policy) requiresConfirmation(name string) bool {
 	return isWriteTool(name)
 }
 
+func (p Policy) requiresCallConfirmation(name string, in any) bool {
+	if name == "api_request" && len(p.ConfirmationTools) == 0 {
+		if request, ok := in.(apiRequestInput); ok {
+			return request.Method != "GET" && request.Method != "HEAD" && request.Method != "OPTIONS"
+		}
+	}
+	return p.requiresConfirmation(name)
+}
+
 func isWriteTool(name string) bool {
 	switch name {
-	case "link_repos_by_key", "link_repos_by_token", "set_variable", "delete_variable", "run_pipeline", "stop_pipeline", "add_schedule", "delete_schedule", "create_deployment":
+	case "api_request", "link_repos_by_key", "link_repos_by_token", "set_variable", "delete_variable", "run_pipeline", "stop_pipeline", "add_schedule", "delete_schedule", "create_deployment":
 		return true
 	}
 	return false

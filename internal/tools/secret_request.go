@@ -46,7 +46,7 @@ func (p *pendingSecrets) close() {
 // call it returns nil.
 func (t *tools) claimSecrets(req *mcp.CallToolRequest, in any) (*pendingSecrets, error) {
 	if _, cameBack := req.Params.InputResponses[secretsInputID]; !cameBack {
-		if !t.policy.requiresConfirmation(req.Params.Name) && !needsSecrets(in) {
+		if !t.policy.requiresCallConfirmation(req.Params.Name, in) && !needsSecrets(in) {
 			return &pendingSecrets{automatic: true, stop: func() {}, page: &secretPage{info: secretPageInfo{Until: time.Now().Add(t.secretWait)}}}, nil
 		}
 		return nil, nil
