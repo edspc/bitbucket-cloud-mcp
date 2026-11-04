@@ -2,10 +2,14 @@ package bitbucket
 
 import (
 	"context"
+	"errors"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
+
+const maxHistoryCursorBytes = 16 << 10
 
 // HistoryCommit keeps the fields needed to choose and read a past revision.
 type HistoryCommit struct {
@@ -24,9 +28,15 @@ type HistoryEntry struct {
 	Path   string        `json:"path,omitempty"`
 }
 
+type HistoryPage struct {
+	Values     []HistoryEntry
+	Total      *int
+	NextCursor string
+}
+
 // ListCommits reads just one page; monitoring and other internal lookups are unaffected.
-func (c *Client) ListCommits(ctx context.Context, repo, revision, path string, renames bool, page, limit int) (Page[HistoryEntry], error) {
-	q := url.Values{"page": {strconv.Itoa(page)}, "pagelen": {strconv.Itoa(limit)}}
+func (c *Client) ListCommits(ctx context.Context, repo, revision, path string, renames bool, cursor string, limit int) (HistoryPage, error) {
+	q := url.Values{"pagelen": {strconv.Itoa(limit)}}
 	endpoint := c.repoPath(repo, "commits")
 	if revision != "" {
 		endpoint += escapedPath(revision)
@@ -34,19 +44,64 @@ func (c *Client) ListCommits(ctx context.Context, repo, revision, path string, r
 	if renames {
 		endpoint = c.repoPath(repo, "filehistory", revision) + escapedPath(strings.Split(path, "/")...)
 		q.Set("renames", "true")
-		p, err := readPage[HistoryEntry](ctx, c, APIURL+endpoint+"?"+q.Encode(), limit)
-		return Page[HistoryEntry]{Values: p.Values, Total: p.Size, More: p.Next != ""}, err
-	}
-	if path != "" {
+	} else if path != "" {
 		q.Set("path", path)
 	}
-	p, err := readPage[HistoryCommit](ctx, c, APIURL+endpoint+"?"+q.Encode(), limit)
+	target, err := url.Parse(APIURL + endpoint + "?" + q.Encode())
 	if err != nil {
-		return Page[HistoryEntry]{}, err
+		return HistoryPage{}, err
 	}
-	entries := make([]HistoryEntry, 0, len(p.Values))
-	for _, commit := range p.Values {
-		entries = append(entries, HistoryEntry{Commit: commit})
+	rawURL := target.String()
+	if cursor != "" {
+		if err = validateHistoryCursor(cursor, target); err != nil {
+			return HistoryPage{}, err
+		}
+		rawURL = cursor
 	}
-	return Page[HistoryEntry]{Values: entries, Total: p.Size, More: p.Next != ""}, nil
+	var result HistoryPage
+	if renames {
+		p, err := readPage[HistoryEntry](ctx, c, rawURL, limit)
+		if err != nil {
+			return HistoryPage{}, err
+		}
+		result = HistoryPage{Values: p.Values, Total: p.Size, NextCursor: p.Next}
+	} else {
+		p, err := readPage[HistoryCommit](ctx, c, rawURL, limit)
+		if err != nil {
+			return HistoryPage{}, err
+		}
+		result = HistoryPage{Values: make([]HistoryEntry, 0, len(p.Values)), Total: p.Size, NextCursor: p.Next}
+		for _, commit := range p.Values {
+			result.Values = append(result.Values, HistoryEntry{Commit: commit})
+		}
+	}
+	if result.NextCursor != "" {
+		if err = validateHistoryCursor(result.NextCursor, target); err != nil {
+			return HistoryPage{}, err
+		}
+	}
+	return result, nil
+}
+
+// Continuations stay opaque: validate their authority and selection without rebuilding them.
+func validateHistoryCursor(cursor string, target *url.URL) error {
+	if len(cursor) > maxHistoryCursorBytes {
+		return errors.New("history cursor exceeds 16 KiB")
+	}
+	next, err := url.Parse(cursor)
+	if err != nil || next.Scheme != target.Scheme || next.Host != target.Host || next.User != nil || strings.Contains(cursor, "#") ||
+		strings.TrimSuffix(next.EscapedPath(), "/") != strings.TrimSuffix(target.EscapedPath(), "/") {
+		return errors.New("history cursor must stay on the requested Bitbucket API repository, revision and endpoint")
+	}
+	query, err := url.ParseQuery(next.RawQuery)
+	if err != nil {
+		return errors.New("history cursor contains invalid query parameters")
+	}
+	filters := target.Query()
+	for _, key := range []string{"pagelen", "path", "renames", "include", "exclude", "q", "sort", "fields"} {
+		if !slices.Equal(query[key], filters[key]) {
+			return errors.New("history cursor does not match the requested filters and limit")
+		}
+	}
+	return nil
 }

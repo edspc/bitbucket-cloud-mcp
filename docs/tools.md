@@ -3,10 +3,16 @@
 ## Commit history
 
 `list_commits` lists the commits of `repo`, newest first, one page at a time.
-`limit` is 10 by default, at most 50; pass `next_page` as `page`, with the same
-filters and limit, for older entries. Each entry contains `commit` with its
+`limit` is 10 by default, at most 50; pass `next_cursor` unchanged as `cursor`,
+with the same filters and limit, for older entries. There is no page-number
+input: Bitbucket's history continuation is opaque and may contain iterator
+state rather than a number. The cursor is checked against the API origin,
+repository, endpoint, revision, filters and limit before each request; it is
+limited to 16 KiB. An absent `next_cursor` marks the last page.
+Each entry contains `commit` with its
 hash, date, message, author and parents. `total` is included when Bitbucket
-supplies it. A result over 40 KiB is refused; reduce `limit` to request less.
+supplies it. A result over 40 KiB is refused; reduce `limit` and start again
+without `cursor` to request less.
 Messages and metadata are marked `content_trust: "untrusted"`.
 
 - `path` selects a file or a directory and its descendants.
