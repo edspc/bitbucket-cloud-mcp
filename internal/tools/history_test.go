@@ -13,6 +13,7 @@ func TestListCommitsFiltersPagesAndPinnedRevision(t *testing.T) {
 	for _, mode := range []string{"path", "prefix", "follow_renames", "all_refs"} {
 		t.Run(mode, func(t *testing.T) {
 			calls := 0
+			cursor := ""
 			cs := connectUUID(t, Policy{}, func(w http.ResponseWriter, r *http.Request) {
 				calls++
 				if strings.Contains(r.URL.Path, "/commit/") {
@@ -25,14 +26,32 @@ func TestListCommitsFiltersPagesAndPinnedRevision(t *testing.T) {
 				if mode == "prefix" && r.URL.Query().Get("path") != "src/pay*" || mode == "path" && r.URL.Query().Get("path") != "src/pay" {
 					t.Fatal(r.URL)
 				}
+				last := r.URL.Query().Has("page")
+				if last && r.URL.String() != cursor {
+					t.Fatal("opaque cursor was changed")
+				}
+				hash, historicalPath := "first", "old.go"
+				payload := map[string]any{"size": 2}
+				if last {
+					hash, historicalPath = "last", "new.go"
+				} else {
+					next := *r.URL
+					q := next.Query()
+					q.Set("page", "bookmark/opaque+=")
+					q.Set("ctx", "preserved iterator state")
+					next.RawQuery = q.Encode()
+					cursor = next.String()
+					payload["next"] = cursor
+				}
 				if mode == "follow_renames" {
 					if !strings.Contains(r.URL.Path, "/filehistory/") || r.URL.Query().Get("renames") != "true" {
 						t.Fatal(r.URL)
 					}
-					writeCollectionPage(w, r, []bitbucket.HistoryEntry{{Path: "old.go", Commit: bitbucket.HistoryCommit{Hash: "first"}}, {Path: "new.go", Commit: bitbucket.HistoryCommit{Hash: "last"}}})
-					return
+					payload["values"] = []bitbucket.HistoryEntry{{Path: historicalPath, Commit: bitbucket.HistoryCommit{Hash: hash}}}
+				} else {
+					payload["values"] = []bitbucket.HistoryCommit{{Hash: hash}}
 				}
-				writeCollectionPage(w, r, []bitbucket.HistoryCommit{{Hash: "first"}, {Hash: "last"}})
+				writeJSON(w, payload)
 			})
 			args := map[string]any{"repo": "repo-a", "limit": 1}
 			if mode != "all_refs" {
@@ -47,15 +66,15 @@ func TestListCommitsFiltersPagesAndPinnedRevision(t *testing.T) {
 				args["follow_renames"] = true
 			}
 			first := decodeResult[listCommitsResult](t, mustCall(t, cs, "list_commits", args))
-			if first.NextPage != 2 || first.ContentTrust != "untrusted" || len(first.Commits) != 1 || first.Commits[0].Commit.Hash != "first" {
+			if first.NextCursor == "" || first.NextCursor != cursor || first.ContentTrust != "untrusted" || len(first.Commits) != 1 || first.Commits[0].Commit.Hash != "first" {
 				t.Fatalf("first page: %+v", first)
 			}
 			if first.Revision != "" {
 				args["revision"] = first.Revision
 			}
-			args["page"] = first.NextPage
+			args["cursor"] = first.NextCursor
 			last := decodeResult[listCommitsResult](t, mustCall(t, cs, "list_commits", args))
-			if last.NextPage != 0 || len(last.Commits) != 1 || last.Commits[0].Commit.Hash != "last" {
+			if last.NextCursor != "" || len(last.Commits) != 1 || last.Commits[0].Commit.Hash != "last" {
 				t.Fatalf("last page: %+v", last)
 			}
 			want := 3
@@ -74,7 +93,7 @@ func TestHistoryRejectsInvalidArgumentsBeforeAPI(t *testing.T) {
 		{"path": "file", "prefix": "pre"}, {"follow_renames": true}, {"follow_renames": true, "path": "file"},
 		{"follow_renames": true, "path": "src/", "revision": "main"}, {"prefix": "src/*"}, {"path": "../file"},
 		{"path": "/"}, {"prefix": "/"}, {"path": "src//file"}, {"revision": "../main"},
-		{"revision": "main", "page": 2}, {"page": -1}, {"limit": 51},
+		{"revision": "main", "cursor": "opaque"}, {"cursor": "not-a-url"}, {"limit": 51},
 	} {
 		cs := connectUUID(t, Policy{}, func(http.ResponseWriter, *http.Request) { t.Error("invalid input reached API") })
 		args := map[string]any{"repo": "repo-a"}
@@ -95,7 +114,8 @@ func TestHistoryPreservesPoliciesAndLiveProjectChecks(t *testing.T) {
 			}
 			writeJSON(w, map[string]any{"project": map[string]string{"key": "APP"}})
 		})
-		if out, failed := call(t, cs, "list_commits", map[string]any{"repo": "repo-a", "path": "file", "page": 2}); !failed || !strings.Contains(out, "server policy") {
+		cursor := bitbucket.APIURL + "/repositories/ws/repo-a/commits?pagelen=10&path=file&page=opaque"
+		if out, failed := call(t, cs, "list_commits", map[string]any{"repo": "repo-a", "path": "file", "cursor": cursor}); !failed || !strings.Contains(out, "server policy") {
 			t.Fatalf("policy did not deny: %s", out)
 		}
 	}
@@ -108,11 +128,19 @@ func TestHistoryPreservesPoliciesAndLiveProjectChecks(t *testing.T) {
 				return
 			}
 			reads++
-			_, _ = fmt.Fprint(w, `{"values":[]}`)
+			if r.URL.Query().Has("page") {
+				_, _ = fmt.Fprint(w, `{"values":[]}`)
+				return
+			}
+			next := *r.URL
+			q := next.Query()
+			q.Set("page", "opaque")
+			next.RawQuery = q.Encode()
+			writeJSON(w, map[string]any{"values": []bitbucket.HistoryCommit{{Hash: "first"}}, "next": next.String()})
 		})
-		mustCall(t, cs, "list_commits", map[string]any{"repo": "repo-a"})
+		first := decodeResult[listCommitsResult](t, mustCall(t, cs, "list_commits", map[string]any{"repo": "repo-a"}))
 		project = "MOVED"
-		out, failed := call(t, cs, "list_commits", map[string]any{"repo": "repo-a", "page": 2})
+		out, failed := call(t, cs, "list_commits", map[string]any{"repo": "repo-a", "cursor": first.NextCursor})
 		if len(policy.Repositories) == 0 {
 			if !failed || reads != 1 {
 				t.Fatalf("moved repository read: %s, reads %d", out, reads)
