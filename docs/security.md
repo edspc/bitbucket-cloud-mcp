@@ -51,4 +51,15 @@ server, which refuses the values, and not another local process that took
 over a released port. At most 32 listeners, including those retained for closed
 pages, can exist at once; reaching that limit refuses new pages until a listener
 retires. The MCP client must support URL elicitation (MCP
-2025-11-25 or later).
+2025-11-25 or later), unless local-browser mode is enabled.
+
+## Local-browser mode
+
+With `BITBUCKET_LOCAL_BROWSER=true`, the local MCP server opens its page in the
+system browser itself. It does not send a URL-elicitation request to the client,
+so a client without that UI can still use confirmation and secret entry.
+This is an operator setting, not a tool argument. The tool call waits for the
+same explicit browser approval; opening the browser does not authorize a write.
+The server keeps the page bound to the session and arguments, rechecks the
+destination before writing, and closes it on timeout or call cancellation.
+Client URL-elicitation refusals remain cancellations in the default mode.

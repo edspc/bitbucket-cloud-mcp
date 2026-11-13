@@ -16,6 +16,7 @@ import (
 // a repository either list allows is allowed. Tool lists use defaults when empty and accept
 // "*" for every tool. Ref limits apply to runs and schedules.
 type Policy struct {
+	LocalBrowser      bool // open local approval pages without client URL elicitation
 	APIProxyEnabled   bool // operator opt-in; never a tool argument
 	Repositories      []string
 	Projects          []string // exact project keys or UUIDs, checked by the client against live repository metadata
@@ -98,7 +99,7 @@ func (p Policy) check(name string, in any) error {
 }
 
 func guarded[In, Out any](t *tools, handler mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {
-	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+	call := func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		if err := t.policy.check(req.Params.Name, in); err != nil {
 			var out Out
 			return nil, out, fmt.Errorf("%w; nothing changed", err)
@@ -121,6 +122,34 @@ func guarded[In, Out any](t *tools, handler mcp.ToolHandlerFor[In, Out]) mcp.Too
 			}
 		}
 		return handler(ctx, req, in)
+	}
+	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+		res, out, err := call(ctx, req, in)
+		if err != nil || !t.policy.LocalBrowser || res == nil || res.InputRequests[secretsInputID] == nil {
+			return res, out, err
+		}
+		params, ok := res.InputRequests[secretsInputID].(*mcp.ElicitParams)
+		if !ok || params.Mode != "url" {
+			return nil, out, errors.New("invalid local approval request; nothing changed")
+		}
+		if t.openBrowser == nil {
+			err = errors.New("system browser is unavailable")
+		} else {
+			err = t.openBrowser(ctx, params.URL)
+		}
+		if err != nil {
+			if page := t.takePending(res.RequestState); page != nil {
+				page.close()
+			}
+			return nil, out, errors.New("cannot open the system browser for local approval; nothing changed")
+		}
+		retry := *req
+		retryParams := *req.Params
+		retry.Params = &retryParams
+		retry.Params.RequestState = res.RequestState
+		// This accepts only opening the page. The handler still waits for the browser's approval form.
+		retry.Params.InputResponses = mcp.InputResponseMap{secretsInputID: &mcp.ElicitResult{Action: "accept"}}
+		return call(ctx, &retry, in)
 	}
 }
 

@@ -68,6 +68,7 @@ Environment variables override saved settings.
 - [CLI](docs/cli.md)
 - [Configuration and access limits](docs/configuration.md)
 - [Setup in Claude Code](docs/claude-code.md)
+- [Setup in Claude Desktop](docs/claude-desktop.md)
 - [Tools](docs/tools.md)
 - [Status subscriptions and rate limits](docs/subscriptions.md)
 - [Security and secret entry](docs/security.md)

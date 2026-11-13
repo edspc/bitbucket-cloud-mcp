@@ -47,6 +47,22 @@ be checked with the dedicated tools' entity-specific policies. Keep the flag in
 the operator's environment, outside the model's control. See
 [API proxy](tools.md#api-proxy) for limits and examples.
 
+## Local system browser
+
+Set `BITBUCKET_LOCAL_BROWSER=true` for a local desktop MCP client that cannot
+open URL elicitation, including Claude Desktop installations that immediately
+return `cancelled`. The server opens the approval page through macOS `open` or
+Linux `xdg-open` and waits for the browser form in the same tool call.
+The default is `false`, which uses the client's MCP URL elicitation.
+This boolean can be saved in Keychain through `configure` or set in the server's
+environment. Environment configuration takes precedence.
+
+The browser page still requires explicit approval and secret entry, and all
+access limits, destination checks, expiry and cancellation rules still apply.
+Opening the browser alone does not approve an operation. A graphical desktop
+and a configured default browser are required for local-browser mode.
+See [Claude Desktop setup](claude-desktop.md).
+
 ## Confirmation and access limits
 
 By default, every tool that changes Bitbucket requires a one-time confirmation
@@ -130,8 +146,8 @@ Bitbucket permissions needed by that environment.
 
 Run `bitbucket-cloud-mcp configure` in a terminal. It asks for the workspace,
 Atlassian email, API token, all five optional access/confirmation settings and the optional
-API proxy switch. Enter `true` or `false` for the proxy switch; a blank answer
-keeps it disabled.
+API proxy and local-browser switches. Enter `true` or `false` for each switch;
+a blank answer keeps it disabled.
 The token is entered with terminal echo disabled and is never displayed.
 Required values cannot be blank. Optional settings accept JSON arrays directly,
 for example `["repo-a"]`, without wrapping the array in a JSON string.

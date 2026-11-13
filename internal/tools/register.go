@@ -23,6 +23,7 @@ type tools struct {
 	bb           *bitbucket.Client
 	log          *slog.Logger
 	server       *mcp.Server
+	openBrowser  func(context.Context, string) error
 	serve        func(http.Handler, time.Time) (baseURL string, closed <-chan struct{}, err error) // closes after its deadline and linger
 	pageTemplate *template.Template                                                                // parsed once for every secret page
 	secretWait   time.Duration
@@ -51,7 +52,7 @@ func NewServer(ctx context.Context, impl *mcp.Implementation, bb *bitbucket.Clie
 	serve := func(h http.Handler, until time.Time) (string, <-chan struct{}, error) {
 		return serveLocal(log, h, until)
 	}
-	return newServer(impl, &tools{ctx: ctx, bb: bb, log: log, policy: policy, serve: serve, secretWait: secretWait,
+	return newServer(impl, &tools{ctx: ctx, bb: bb, log: log, policy: policy, serve: serve, openBrowser: openSystemBrowser, secretWait: secretWait,
 		pollInterval: pollInterval, watchLifetime: watchLifetime})
 }
 

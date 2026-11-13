@@ -75,7 +75,7 @@ func mergedLookup(values map[string]string, env func(string) (string, bool)) fun
 func validateConfiguration(values map[string]string) (map[string]string, error) {
 	for name := range values {
 		switch name {
-		case "BITBUCKET_WORKSPACE", "BITBUCKET_EMAIL", "BITBUCKET_API_TOKEN", "BITBUCKET_ALLOWED_REPOS", "BITBUCKET_ALLOWED_PROJECTS", "BITBUCKET_ALLOWED_TOOLS", "BITBUCKET_ALLOWED_REFS", "BITBUCKET_CONFIRM_TOOLS", "BITBUCKET_ENABLE_API_PROXY":
+		case "BITBUCKET_WORKSPACE", "BITBUCKET_EMAIL", "BITBUCKET_API_TOKEN", "BITBUCKET_ALLOWED_REPOS", "BITBUCKET_ALLOWED_PROJECTS", "BITBUCKET_ALLOWED_TOOLS", "BITBUCKET_ALLOWED_REFS", "BITBUCKET_CONFIRM_TOOLS", "BITBUCKET_ENABLE_API_PROXY", "BITBUCKET_LOCAL_BROWSER":
 		default:
 			return nil, errors.New("unknown configuration parameter")
 		}

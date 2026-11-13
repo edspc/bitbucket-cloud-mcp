@@ -117,12 +117,13 @@ func TestAllSavedParameters(t *testing.T) {
 	values["BITBUCKET_ALLOWED_TOOLS"] = `["get_pipeline"]`
 	values["BITBUCKET_ALLOWED_REFS"] = `["branch:main"]`
 	values["BITBUCKET_ENABLE_API_PROXY"] = "true"
+	values["BITBUCKET_LOCAL_BROWSER"] = "true"
 	if _, err := validateConfiguration(values); err != nil {
 		t.Fatal(err)
 	}
 	lookup := mergedLookup(values, func(string) (string, bool) { return "", false })
 	policy, err := policyFromLookup(lookup)
-	if err != nil || len(policy.Repositories) != 1 || len(policy.Projects) != 1 || len(policy.Tools) != 1 || len(policy.Refs) != 1 || len(policy.ConfirmationTools) != 1 || !policy.APIProxyEnabled {
+	if err != nil || len(policy.Repositories) != 1 || len(policy.Projects) != 1 || len(policy.Tools) != 1 || len(policy.Refs) != 1 || len(policy.ConfirmationTools) != 1 || !policy.APIProxyEnabled || !policy.LocalBrowser {
 		t.Fatalf("saved parameters not applied: %+v, %v", policy, err)
 	}
 }
@@ -140,5 +141,22 @@ func TestSavedAPIProxyEnvironmentOverride(t *testing.T) {
 	values["BITBUCKET_ENABLE_API_PROXY"] = "invalid"
 	if _, err = validateConfiguration(values); err == nil {
 		t.Fatal("invalid saved API proxy switch accepted")
+	}
+}
+
+func TestLocalBrowserConfiguration(t *testing.T) {
+	for _, value := range []string{"true", "false", "invalid", ""} {
+		values := testConfiguration()
+		values["BITBUCKET_LOCAL_BROWSER"] = value
+		_, err := validateConfiguration(values)
+		if (err != nil) != (value == "invalid" || value == "") {
+			t.Fatalf("local browser boolean: %q, %v", value, err)
+		}
+	}
+	values := testConfiguration()
+	values["BITBUCKET_LOCAL_BROWSER"] = "true"
+	policy, err := policyFromLookup(mergedLookup(values, func(name string) (string, bool) { return "false", name == "BITBUCKET_LOCAL_BROWSER" }))
+	if err != nil || policy.LocalBrowser {
+		t.Fatalf("environment must override saved browser mode: %+v, %v", policy, err)
 	}
 }

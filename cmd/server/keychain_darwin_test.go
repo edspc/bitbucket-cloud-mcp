@@ -57,6 +57,7 @@ func TestKeychainIntegrationRoundTrip(t *testing.T) {
 	values["BITBUCKET_ALLOWED_TOOLS"] = `["get_pipeline"]`
 	values["BITBUCKET_ALLOWED_REFS"] = `["branch:main"]`
 	values["BITBUCKET_ENABLE_API_PROXY"] = "true"
+	values["BITBUCKET_LOCAL_BROWSER"] = "true"
 	if err := saveKeychain(values, keychain); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +74,7 @@ func TestKeychainIntegrationRoundTrip(t *testing.T) {
 		t.Fatal("saved credentials were not loaded")
 	}
 	policy, err := policyFromLookup(lookup)
-	if err != nil || policy.Repositories == nil || len(policy.Repositories) != 0 || len(policy.Projects) != 1 || len(policy.Tools) != 1 || len(policy.Refs) != 1 || len(policy.ConfirmationTools) != 1 || !policy.APIProxyEnabled {
+	if err != nil || policy.Repositories == nil || len(policy.Repositories) != 0 || len(policy.Projects) != 1 || len(policy.Tools) != 1 || len(policy.Refs) != 1 || len(policy.ConfirmationTools) != 1 || !policy.APIProxyEnabled || !policy.LocalBrowser {
 		t.Fatalf("saved policy not loaded: %+v, %v", policy, err)
 	}
 	t.Setenv("BITBUCKET_WORKSPACE", "override")

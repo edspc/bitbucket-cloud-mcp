@@ -29,6 +29,7 @@ func promptConfiguration(out io.Writer, readLine func(string, bool) (string, err
 		{"BITBUCKET_ALLOWED_REFS", "Allowed refs (branch:name or tag:name)", false, false},
 		{"BITBUCKET_CONFIRM_TOOLS", "Tools requiring confirmation", false, false},
 		{"BITBUCKET_ENABLE_API_PROXY", "Enable API proxy (true/false; blank disables)", false, false},
+		{"BITBUCKET_LOCAL_BROWSER", "Open approval pages in system browser (true/false; blank uses MCP)", false, false},
 	} {
 		for {
 			value, err := readLine(field.label+": ", field.secret)

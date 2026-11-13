@@ -63,10 +63,10 @@ func (t *tools) claimSecrets(req *mcp.CallToolRequest, in any) (*pendingSecrets,
 }
 
 // askSecrets opens a local secret page and asks the client, through URL elicitation, to send
-// the user there. The SDK delivers the request on any protocol version and calls the tool again
-// with the user's consent in InputResponses and the elicitation ID in RequestState.
+// the user there. In local-browser mode guarded handles opening and retrying directly;
+// otherwise the SDK/client delivers the request and retries with InputResponses and RequestState.
 func (t *tools) askSecrets(ctx context.Context, req *mcp.CallToolRequest, in any, info secretPageInfo) (*mcp.CallToolResult, error) {
-	if caps := req.ClientCapabilities(); caps == nil || caps.Elicitation == nil || caps.Elicitation.URL == nil {
+	if caps := req.ClientCapabilities(); !t.policy.LocalBrowser && (caps == nil || caps.Elicitation == nil || caps.Elicitation.URL == nil) {
 		return nil, errors.New("the MCP client does not support URL elicitation (MCP 2025-11-25 or later), " +
 			"which is needed to confirm changes and enter secrets outside the client and model; nothing changed")
 	}
@@ -118,7 +118,8 @@ func (t *tools) askSecrets(ctx context.Context, req *mcp.CallToolRequest, in any
 	// Before MCP 2026-07-28 the SDK asks the client within this same call and then calls the tool
 	// once more, which claims the page. A call that ends before that, because the user cancelled
 	// it or the client could not show the page, never comes back: its page closes with it.
-	if ip := req.Session.InitializeParams(); ip != nil && ip.ProtocolVersion < multiRoundTripVersion {
+	// Local-browser mode also completes within the originating call on every protocol.
+	if ip := req.Session.InitializeParams(); t.policy.LocalBrowser || ip != nil && ip.ProtocolVersion < multiRoundTripVersion {
 		context.AfterFunc(ctx, func() {
 			if t.takePending(id) != nil {
 				stop()
@@ -176,11 +177,12 @@ func (t *tools) waitSecrets(ctx context.Context, req *mcp.CallToolRequest, p *pe
 		if !time.Now().Before(p.page.info.Until) {
 			return nil, fmt.Errorf("the secret page approval expired (%w); nothing changed", context.DeadlineExceeded)
 		}
-		err := req.Session.NotifyElicitationComplete(ctx, &mcp.ElicitationCompleteParams{ElicitationID: req.Params.RequestState})
-		if err != nil {
-			t.log.WarnContext(ctx, "notifying the client that the secret page is done", "error", err)
+		if !t.policy.LocalBrowser {
+			if err := req.Session.NotifyElicitationComplete(ctx, &mcp.ElicitationCompleteParams{ElicitationID: req.Params.RequestState}); err != nil {
+				t.log.WarnContext(ctx, "notifying the client that the secret page is done", "error", err)
+			}
 		}
-		if err = ctx.Err(); err != nil {
+		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("the secret page approval expired or was cancelled (%w); nothing changed", err)
 		}
 		return values, nil

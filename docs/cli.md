@@ -14,3 +14,6 @@ archive.
 hides API token input, validates the answers and replaces the saved macOS Keychain configuration. See
 [Keychain setup](configuration.md#macos-keychain-setup). It exits before starting
 MCP and reports success on stderr. A terminal is required; piped JSON is not accepted.
+
+`configure` also asks whether approval pages should open in the system browser
+(`BITBUCKET_LOCAL_BROWSER`) for local clients without working URL elicitation.

@@ -46,6 +46,10 @@ Optional browser confirmation (JSON array; unset or [] confirms every write):
   BITBUCKET_CONFIRM_TOOLS      Exact tool names; ["*"] confirms every tool
   Secret entry always requires the browser page.
 
+Optional local browser (disabled by default):
+  BITBUCKET_LOCAL_BROWSER   Set true to open approval pages in the system browser
+  Use with local desktop clients that cannot open MCP URL elicitation.
+
 Optional API proxy (disabled by default):
   BITBUCKET_ENABLE_API_PROXY   Set true to register api_request
   Proxy requests require unrestricted repository/project/ref policy.

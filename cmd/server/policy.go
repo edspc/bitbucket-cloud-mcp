@@ -16,11 +16,19 @@ func policyFromEnv() (tools.Policy, error) {
 
 func policyFromLookup(lookup func(string) (string, bool)) (tools.Policy, error) {
 	var policy tools.Policy
-	if value, set := lookup("BITBUCKET_ENABLE_API_PROXY"); set {
-		var err error
-		policy.APIProxyEnabled, err = strconv.ParseBool(value)
-		if err != nil {
-			return tools.Policy{}, fmt.Errorf("BITBUCKET_ENABLE_API_PROXY must be a boolean")
+	for _, field := range []struct {
+		name  string
+		value *bool
+	}{
+		{"BITBUCKET_ENABLE_API_PROXY", &policy.APIProxyEnabled},
+		{"BITBUCKET_LOCAL_BROWSER", &policy.LocalBrowser},
+	} {
+		if value, set := lookup(field.name); set {
+			var err error
+			*field.value, err = strconv.ParseBool(value)
+			if err != nil {
+				return tools.Policy{}, fmt.Errorf("%s must be a boolean", field.name)
+			}
 		}
 	}
 	for _, field := range []struct {

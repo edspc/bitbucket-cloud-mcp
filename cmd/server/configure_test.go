@@ -8,7 +8,7 @@ import (
 )
 
 func TestInteractiveConfiguration(t *testing.T) {
-	lines := []string{"", "team", "email", "private-token", "null", "[]", "", `["get_pipeline"]`, `["branch:main"]`, `["*"]`, "false"}
+	lines := []string{"", "team", "email", "private-token", "null", "[]", "", `["get_pipeline"]`, `["branch:main"]`, `["*"]`, "false", "true"}
 	var out bytes.Buffer
 	var hidden []bool
 	values, err := promptConfiguration(&out, func(prompt string, secret bool) (string, error) {
@@ -32,7 +32,7 @@ func TestInteractiveConfiguration(t *testing.T) {
 	if _, set := values["BITBUCKET_ALLOWED_PROJECTS"]; set {
 		t.Fatal("blank optional answer must be unset")
 	}
-	if len(hidden) != 11 || !hidden[3] {
+	if len(hidden) != 12 || !hidden[3] {
 		t.Fatal("token must use hidden input")
 	}
 	for i, secret := range hidden {
@@ -46,7 +46,7 @@ func TestInteractiveConfiguration(t *testing.T) {
 }
 
 func TestInteractiveConfigurationInterrupted(t *testing.T) {
-	for stop := range 9 {
+	for stop := range 10 {
 		count := 0
 		values, err := promptConfiguration(io.Discard, func(string, bool) (string, error) {
 			count++
@@ -79,7 +79,7 @@ func TestTerminalLineDoesNotConsumeNextAnswer(t *testing.T) {
 
 func TestInteractiveAPIProxyValidation(t *testing.T) {
 	for _, answer := range []string{"", "true", "false"} {
-		lines := []string{"team", "email", "token", "", "", "", "", "", "invalid", answer}
+		lines := []string{"team", "email", "token", "", "", "", "", "", "invalid", answer, ""}
 		var out bytes.Buffer
 		values, err := promptConfiguration(&out, func(string, bool) (string, error) {
 			if len(lines) == 0 {
