@@ -1,9 +1,22 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestExplicitKeychainMustBeAFile(t *testing.T) {
+	for _, keychain := range []string{filepath.Join(t.TempDir(), "missing.keychain-db"), t.TempDir()} {
+		lookup, err := configurationLookupForKeychain(keychain)
+		if err == nil || lookup != nil || !strings.Contains(err.Error(), "cannot open macOS Keychain") {
+			t.Fatalf("invalid Keychain path did not stop loading: %v", err)
+		}
+		if err = saveKeychain(testConfiguration(), keychain); err == nil || !strings.Contains(err.Error(), "cannot open macOS Keychain") {
+			t.Fatalf("invalid Keychain path did not stop saving: %v", err)
+		}
+	}
+}
 
 func testConfiguration() map[string]string {
 	return map[string]string{

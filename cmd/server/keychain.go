@@ -28,6 +28,9 @@ func configurationLookupForKeychain(keychain string) (func(string) (string, bool
 }
 
 func loadKeychain(keychain string) (map[string]string, error) {
+	if err := checkKeychainPath(keychain); err != nil {
+		return nil, err
+	}
 	args := []string{"find-generic-password", "-s", "bitbucket-cloud-mcp", "-a", "configuration", "-w"}
 	if keychain != "" {
 		args = append(args, keychain)
@@ -45,6 +48,18 @@ func loadKeychain(keychain string) (map[string]string, error) {
 		return nil, errors.New("invalid macOS Keychain configuration")
 	}
 	return values, nil
+}
+
+func checkKeychainPath(keychain string) error {
+	if keychain == "" {
+		return nil
+	}
+	// security can report a missing Keychain file as a missing item.
+	info, err := os.Stat(keychain)
+	if err != nil || !info.Mode().IsRegular() {
+		return errors.New("cannot open macOS Keychain")
+	}
+	return nil
 }
 
 func mergedLookup(values map[string]string, env func(string) (string, bool)) func(string) (string, bool) {
@@ -124,6 +139,9 @@ func configure(in io.Reader, out io.Writer) error {
 
 func saveKeychain(values map[string]string, keychain string) error {
 	if _, err := validateConfiguration(values); err != nil {
+		return err
+	}
+	if err := checkKeychainPath(keychain); err != nil {
 		return err
 	}
 	command, err := keychainWriteCommand(values, keychain)
