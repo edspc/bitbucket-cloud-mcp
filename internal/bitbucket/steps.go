@@ -108,12 +108,6 @@ func (c *Client) getTail(ctx context.Context, rawURL string, auth func(*http.Req
 	return c.get(ctx, rawURL, auth, http.Header{"Range": {"bytes=-" + strconv.Itoa(maxBytes)}})
 }
 
-// readTail reads r to the end and keeps its last n bytes, for servers that ignore the range.
-func readTail(r io.Reader, n int) ([]byte, bool, error) {
-	buf, start, err := readLogTail(r, n)
-	return buf, start > 0, err
-}
-
 func readLogTail(r io.Reader, n int) ([]byte, int64, error) {
 	var buf []byte
 	var read int64

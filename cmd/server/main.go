@@ -17,6 +17,13 @@ import (
 
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	if len(os.Args) == 2 && os.Args[1] == "configure" {
+		if err := configure(os.Stdin, os.Stderr); err != nil {
+			log.Error("configuration failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if handled, err := commandLine(os.Args[1:], os.Stdout); handled {
 		if err != nil {
 			log.Error("invalid command line", "error", err)
@@ -31,12 +38,16 @@ func main() {
 }
 
 func run(ctx context.Context, log *slog.Logger) error {
-	cfg, err := configFromEnv()
+	lookup, err := configurationLookup()
+	if err != nil {
+		return err
+	}
+	cfg, err := configFromLookup(lookup)
 	if err != nil {
 		return err
 	}
 	bb := bitbucket.New(&http.Client{Timeout: 30 * time.Second}, cfg)
-	policy, err := policyFromEnv()
+	policy, err := policyFromLookup(lookup)
 	if err != nil {
 		return err
 	}
@@ -45,10 +56,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 	return s.Run(ctx, &mcp.StdioTransport{})
 }
 
-func configFromEnv() (bitbucket.Config, error) {
+func configFromLookup(lookup func(string) (string, bool)) (bitbucket.Config, error) {
 	var missing []string
 	get := func(name string) string {
-		v := os.Getenv(name)
+		v, _ := lookup(name)
 		if v == "" {
 			missing = append(missing, name)
 		}
@@ -60,7 +71,7 @@ func configFromEnv() (bitbucket.Config, error) {
 		Token:     get("BITBUCKET_API_TOKEN"),
 	}
 	if len(missing) > 0 {
-		return cfg, fmt.Errorf("missing environment variables: %s", strings.Join(missing, ", "))
+		return cfg, fmt.Errorf("missing configuration parameters: %s", strings.Join(missing, ", "))
 	}
 	return cfg, nil
 }

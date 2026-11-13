@@ -56,6 +56,13 @@ Verify either installation method with:
 bitbucket-cloud-mcp --version
 ```
 
+## macOS Keychain
+
+Run `bitbucket-cloud-mcp configure` in a terminal to interactively save all
+connection and access-limit settings in Keychain. The API token input is hidden.
+See [Keychain setup](docs/configuration.md#macos-keychain-setup) for details.
+Environment variables override saved settings.
+
 ## Documentation
 
 - [CLI](docs/cli.md)

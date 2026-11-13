@@ -11,8 +11,12 @@ import (
 )
 
 func policyFromEnv() (tools.Policy, error) {
+	return policyFromLookup(os.LookupEnv)
+}
+
+func policyFromLookup(lookup func(string) (string, bool)) (tools.Policy, error) {
 	var policy tools.Policy
-	if value, set := os.LookupEnv("BITBUCKET_ENABLE_API_PROXY"); set {
+	if value, set := lookup("BITBUCKET_ENABLE_API_PROXY"); set {
 		var err error
 		policy.APIProxyEnabled, err = strconv.ParseBool(value)
 		if err != nil {
@@ -29,7 +33,7 @@ func policyFromEnv() (tools.Policy, error) {
 		{"BITBUCKET_ALLOWED_REFS", &policy.Refs},
 		{"BITBUCKET_CONFIRM_TOOLS", &policy.ConfirmationTools},
 	} {
-		value, set := os.LookupEnv(field.name)
+		value, set := lookup(field.name)
 		if !set {
 			continue
 		}

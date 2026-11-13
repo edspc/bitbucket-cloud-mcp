@@ -207,15 +207,15 @@ func TestStepLogRefusesPlainHTTPStorage(t *testing.T) {
 	}
 }
 
-func TestReadTailKeepsTheEnd(t *testing.T) {
+func TestReadLogTailKeepsTheEndAndOffset(t *testing.T) {
 	data := bytes.Repeat([]byte("0123456789"), 1000)
-	got, dropped, err := readTail(iotest.OneByteReader(bytes.NewReader(data)), 15)
-	if err != nil || string(got) != "567890123456789" || !dropped {
-		t.Fatalf("readTail = %q, %v, %v", got, dropped, err)
+	got, start, err := readLogTail(iotest.OneByteReader(bytes.NewReader(data)), 15)
+	if err != nil || string(got) != "567890123456789" || start != int64(len(data)-15) {
+		t.Fatalf("readLogTail = %q, %d, %v", got, start, err)
 	}
-	got, dropped, err = readTail(bytes.NewReader(data[:10]), 15)
-	if err != nil || string(got) != "0123456789" || dropped {
-		t.Fatalf("short readTail = %q, %v, %v", got, dropped, err)
+	got, start, err = readLogTail(bytes.NewReader(data[:10]), 15)
+	if err != nil || string(got) != "0123456789" || start != 0 {
+		t.Fatalf("short readLogTail = %q, %d, %v", got, start, err)
 	}
 }
 

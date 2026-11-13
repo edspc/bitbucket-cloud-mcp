@@ -21,12 +21,16 @@ func commandLine(args []string, out io.Writer) (bool, error) {
 	case "--version":
 		_, err = fmt.Fprintf(out, "bitbucket-cloud-mcp %s\n", version)
 	case "--help", "-h":
-		_, err = io.WriteString(out, `Usage: bitbucket-cloud-mcp [--help | --version]
+		_, err = io.WriteString(out, `Usage: bitbucket-cloud-mcp [configure | --help | --version]
 
 Run without arguments to serve MCP over stdin/stdout.
 The MCP client starts this process; no background service is needed.
 
-Required environment variables for MCP mode:
+configure interactively prompts for all settings and saves them to macOS Keychain.
+The API token is hidden; configure requires a terminal.
+Environment variables override saved Keychain parameters.
+
+Required configuration parameters for MCP mode:
   BITBUCKET_WORKSPACE   Workspace slug
   BITBUCKET_EMAIL       Atlassian account email
   BITBUCKET_API_TOKEN   Bitbucket API token; supply through a secret manager

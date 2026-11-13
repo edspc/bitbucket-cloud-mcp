@@ -1,8 +1,12 @@
 # Configuration
 
-Configuration comes from environment variables only. The Bitbucket token is a
+Configuration comes from environment variables or macOS Keychain. Environment
+variables take precedence, including explicitly empty values. On macOS, a missing
+Keychain item falls back to environment-only configuration; other Keychain errors
+stop startup so saved access restrictions cannot silently disappear. On Linux,
+configuration continues to come from the environment. The Bitbucket token is a
 secret that reaches every repository its account can, so only this server's
-process should get it: start the server through a secret manager that
+process should get it: use Keychain as described below or a secret manager that
 resolves a reference at launch, such as 1Password's `op run` (see
 [Setup in Claude Code](claude-code.md)). Do not export the token in a
 shell profile, which `"${VAR}"` in the MCP client's `env` needs: the client
@@ -118,6 +122,33 @@ allowed repositories and projects and filters the answer (see
 [Repository search](tools.md#repository-search)). Bitbucket provides no atomic project check
 and write: an administrator can still move a repository between those requests.
 
-Keep these settings in the operator's environment or user-scoped MCP config,
+Keep these settings in Keychain, the operator's environment or user-scoped MCP config,
 outside the model's control. Use a dedicated account/token with only the
 Bitbucket permissions needed by that environment.
+
+## macOS Keychain setup
+
+Run `bitbucket-cloud-mcp configure` in a terminal. It asks for the workspace,
+Atlassian email, API token, all five optional access/confirmation settings and the optional
+API proxy switch. Enter `true` or `false` for the proxy switch; a blank answer
+keeps it disabled.
+The token is entered with terminal echo disabled and is never displayed.
+Required values cannot be blank. Optional settings accept JSON arrays directly,
+for example `["repo-a"]`, without wrapping the array in a JSON string.
+Invalid arrays are explained and prompted again. Leave an optional answer blank
+to use its default. Existing settings are replaced rather than used as defaults.
+Press Ctrl+C to cancel without saving; interrupted input also prevents saving.
+The command requires an interactive terminal and does not accept piped JSON.
+
+The command validates the complete configuration before replacing the saved
+configuration. Omitted optional parameters become unset; `[]` retains its usual
+meaning. It stores a single generic-password item with service
+`bitbucket-cloud-mcp` and account `configuration` in the default Keychain.
+All values, including access limits, are stored in that item. Existing saved
+settings are replaced, not merged. No secrets are printed or passed as process
+arguments. Commands longer than 4,095 encoded bytes are rejected before any
+Keychain write, preserving the existing settings. The limit includes escaped
+values and command overhead. macOS may ask you to unlock or authorize access to the Keychain.
+
+After saving, launch the MCP server without configuration environment variables
+to use the saved settings. Keychain setup is available only on macOS.

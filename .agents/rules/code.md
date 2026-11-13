@@ -17,7 +17,7 @@ paths:
 - Call the Bitbucket API through one shared client package; tool handlers
   never build Bitbucket URLs or auth headers themselves.
 - Security:
-  - read the token only from the environment;
+  - read the token only from the environment or macOS Keychain;
   - never log tokens, `Authorization` headers or full API responses;
   - never put the token into URLs or tool results.
 - Return every API error to the MCP client with a clear message; do not

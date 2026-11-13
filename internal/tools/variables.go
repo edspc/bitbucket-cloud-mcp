@@ -75,6 +75,9 @@ func (t *tools) variableScope(ctx context.Context, p variablePlace) (bitbucket.V
 	names := make([]string, 0, len(envs))
 	for _, e := range envs {
 		if e.Name == p.Environment {
+			if e.UUID == "" {
+				return bitbucket.VariableScope{}, errors.New("bitbucket returned no deployment environment UUID")
+			}
 			return bitbucket.VariableScope{Repo: p.Repo, EnvironmentUUID: e.UUID}, nil
 		}
 		names = append(names, strconv.Quote(e.Name)) // written by repository admins, so quoted

@@ -268,6 +268,9 @@ The variable tools work at one of three places, chosen by `scope`:
 | `repository` | `repo`                | all pipelines of the repository       |
 | `deployment` | `repo`, `environment` | one deployment environment of `repo`  |
 
+Deployment-scoped operations require the selected environment's UUID from
+Bitbucket. A missing UUID returns an error before any variable is read or changed.
+
 - `list_variables` lists one page of names and values; values of secured
   variables are never returned. `limit` is 10 by default, at most 50; `page`
   starts at 1. Pass `next_page` as `page` with the same scope, repository,

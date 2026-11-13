@@ -65,3 +65,17 @@ workflow, and that the hook uses the same go-release-actions commit.
 ## Change workflow
 
 See [.agents/rules/lifecycle.md](../.agents/rules/lifecycle.md).
+
+## Keychain and terminal tests
+
+On macOS, `make test` exercises saving and loading through the real `security`
+utility using temporary Keychains. These tests do not change the default
+Keychain or store credentials in the login Keychain. Temporary Keychains are
+deleted during cleanup. The tests cover replacement, environment overrides,
+missing items, read failures, invalid JSON and preservation of existing settings
+when a configuration is too large.
+
+On Linux and macOS, a terminal regression test uses Python 3's standard-library
+`pty` module to send a fake token as soon as its prompt appears. It checks that
+echo is already disabled and that terminal settings are restored after success
+and Ctrl+C. This test is skipped if Python 3 is unavailable.

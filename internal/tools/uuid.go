@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -31,9 +30,6 @@ func (t *tools) getUUID(ctx context.Context, _ *mcp.CallToolRequest, in getUUIDI
 			return nil, uuidResult{}, err
 		}
 		uuid = scope.EnvironmentUUID
-		if uuid == "" {
-			return nil, uuidResult{}, errors.New("bitbucket returned no deployment environment UUID")
-		}
 	}
 	if err != nil {
 		return nil, uuidResult{}, err
