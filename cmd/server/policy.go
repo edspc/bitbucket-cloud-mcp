@@ -54,5 +54,8 @@ func policyFromLookup(lookup func(string) (string, bool)) (tools.Policy, error) 
 			}
 		}
 	}
+	if err := tools.ValidateToolRules(policy.Tools); err != nil {
+		return tools.Policy{}, fmt.Errorf("BITBUCKET_ALLOWED_TOOLS: %w", err)
+	}
 	return policy, nil
 }

@@ -124,9 +124,13 @@ func configure(in io.Reader, out io.Writer) error {
 	if _, err := check.Output(); err != nil {
 		return errors.New("configure requires an interactive terminal")
 	}
-	values, err := promptConfiguration(out, func(prompt string, secret bool) (string, error) {
+	saved, err := loadKeychain("")
+	if err != nil {
+		return err
+	}
+	values, err := promptConfigurationEdit(out, func(prompt string, secret bool) (string, error) {
 		return terminalLine(terminal, out, prompt, secret)
-	})
+	}, saved)
 	if err != nil {
 		return err
 	}

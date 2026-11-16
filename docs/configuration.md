@@ -43,7 +43,9 @@ The proxy uses server credentials, accepts non-secret JSON requests and returns
 bounded JSON or text with credential fields redacted. Writes require browser
 confirmation by default. It refuses execution when repository, project or ref
 allowlists are set, even to `[]`, because arbitrary bodies and responses cannot
-be checked with the dedicated tools' entity-specific policies. Keep the flag in
+be checked with the dedicated tools' entity-specific policies. Repository-specific
+tool rules also disable the proxy to prevent bypass through an arbitrary API call.
+Keep the flag in
 the operator's environment, outside the model's control. See
 [API proxy](tools.md#api-proxy) for limits and examples.
 
@@ -99,9 +101,9 @@ the source's public key and the target's Access Keys again before it changes
 them, and a schedule deletion reads the schedule again.
 
 These optional environment variables narrow the server's authority. Each is a
-JSON array of names. An unset variable allows all names within the configured
+JSON array of names or tool rules. An unset variable allows all names within the configured
 workspace. For `BITBUCKET_ALLOWED_TOOLS`, `[]` also keeps that default and the
-entry `"*"` allows every tool. Repository, project and ref lists use exact names
+entry `"*"` allows every tool subject to deny rules. Repository, project and ref lists use exact names
 without wildcard expansion; `[]` denies all for those three lists, except that
 repository and project lists add up when both are set (see below). Invalid
 arrays stop the server rather than silently removing the restriction.
@@ -110,7 +112,7 @@ arrays stop the server rather than silently removing the restriction.
 |----------|---------|-------------|
 | `BITBUCKET_ALLOWED_REPOS` | `["repo-a","repo-b"]` | These repositories, in any project; applies to both repositories of a link and all repository tools/resources; workspace variables are disabled when this list is set |
 | `BITBUCKET_ALLOWED_PROJECTS` | `["APP","{01234567-89ab-cdef-0123-456789abcdef}"]` | Repositories in these projects in the configured workspace; exact project keys or UUIDs, not display names; workspace variables are disabled when this list is set |
-| `BITBUCKET_ALLOWED_TOOLS` | `["get_pull_request","list_pull_requests"]` | Only these tools can execute; unset, `[]` or `["*"]` allows all; pipeline resources and subscriptions also require `get_pipeline` |
+| `BITBUCKET_ALLOWED_TOOLS` | `["get_pull_request","set_variable@repo-a","!delete_variable@repo-a"]` | Allow/deny rules for tools, optionally scoped to a repository; pipeline resources and subscriptions also require `get_pipeline` |
 | `BITBUCKET_ALLOWED_REFS` | `["branch:main","tag:v1.2.0"]` | Only these refs can run pipelines, only at commits on them, or have schedules added/deleted |
 
 Repository and project lists add up: when both are configured, a repository is
@@ -142,9 +144,53 @@ Keep these settings in Keychain, the operator's environment or user-scoped MCP c
 outside the model's control. Use a dedicated account/token with only the
 Bitbucket permissions needed by that environment.
 
+### Repository-specific tool rules
+
+`BITBUCKET_ALLOWED_TOOLS` accepts these entries:
+
+| Entry | Meaning |
+|-------|---------|
+| `get_pipeline` | Allow this tool in every otherwise allowed repository |
+| `get_pipeline@repo-a` | Allow this tool only for the exact repository slug `repo-a` |
+| `!delete_variable@repo-a` | Deny this tool for `repo-a` |
+| `!delete_variable` | Deny this tool everywhere |
+| `*` or `*@repo-a` | Allow every tool globally or for `repo-a` |
+| `!*@repo-a` | Deny every tool for `repo-a` |
+
+If any allow entry is present, a call must match an allow entry. With only deny
+entries, other calls remain allowed. An unset list or `[]` allows all tools.
+Denials always win, regardless of entry order; a wildcard cannot override them.
+Repository slugs in tool rules match case-insensitively, so changing the case of
+the `repo` argument cannot bypass a denial. Tool names remain case-sensitive.
+For example, `["*","!delete_variable@production"]` allows all tools except
+deleting variables in `production`, while `["get_pipeline","set_variable@staging"]`
+allows reading pipelines everywhere and changing variables only in `staging`.
+Tool rules never override repository, project or ref limits, browser confirmation,
+or the separate API-proxy opt-in. Partial wildcards and malformed rules stop startup.
+
+For link tools, both `source_repo` and `target_repo` must be allowed by the tool
+rules. Pipeline resource reads and subscriptions apply `get_pipeline` rules for
+their repository. If a tool has a repository-specific rule, calls without an
+explicit repository are refused, including workspace variables and `search_code`
+without `repo`. Use global rules for tools with no repository argument, such as
+`search_repositories`. The API proxy is unavailable whenever any repository-specific
+tool rule is configured, because it cannot enforce those limits on arbitrary APIs.
+
 ## macOS Keychain setup
 
-Run `bitbucket-cloud-mcp configure` in a terminal. It asks for the workspace,
+Run `bitbucket-cloud-mcp configure` in a terminal. With existing saved configuration,
+it opens a menu to edit one parameter. Select a field by number or full parameter
+name, enter its new value and save; all other saved values remain unchanged.
+For example, choose `BITBUCKET_API_TOKEN` to rotate only the token, or
+`BITBUCKET_ALLOWED_PROJECTS` / `BITBUCKET_ALLOWED_REPOS` to replace that JSON array.
+The selected non-secret field's current value is shown; the token is never shown.
+Blank input keeps the saved value. For optional settings, `/clear` removes the
+saved parameter and restores its default; `[]` instead keeps the list's usual
+meaning. Environment variables are not copied into Keychain by the editor and
+still override saved values when the server starts.
+Choose `0` to cancel, or `all` to replace every setting through full setup.
+
+On first use, or after choosing `all`, it asks for the workspace,
 Atlassian email, API token, all five optional access/confirmation settings and the optional
 API proxy and local-browser switches. Enter `true` or `false` for each switch;
 a blank answer keeps it disabled.
@@ -152,7 +198,7 @@ The token is entered with terminal echo disabled and is never displayed.
 Required values cannot be blank. Optional settings accept JSON arrays directly,
 for example `["repo-a"]`, without wrapping the array in a JSON string.
 Invalid arrays are explained and prompted again. Leave an optional answer blank
-to use its default. Existing settings are replaced rather than used as defaults.
+to use its default. In full setup, existing settings are replaced rather than used as defaults.
 Press Ctrl+C to cancel without saving; interrupted input also prevents saving.
 The command requires an interactive terminal and does not accept piped JSON.
 
@@ -161,10 +207,12 @@ configuration. Omitted optional parameters become unset; `[]` retains its usual
 meaning. It stores a single generic-password item with service
 `bitbucket-cloud-mcp` and account `configuration` in the default Keychain.
 All values, including access limits, are stored in that item. Existing saved
-settings are replaced, not merged. No secrets are printed or passed as process
+settings are preserved when editing one field and replaced when choosing `all`.
+No secrets are printed or passed as process
 arguments. Commands longer than 4,095 encoded bytes are rejected before any
 Keychain write, preserving the existing settings. The limit includes escaped
 values and command overhead. macOS may ask you to unlock or authorize access to the Keychain.
 
 After saving, launch the MCP server without configuration environment variables
-to use the saved settings. Keychain setup is available only on macOS.
+to use the saved settings. Restart an already running MCP server or its desktop
+client to load the changes. Keychain setup is available only on macOS.

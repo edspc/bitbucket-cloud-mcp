@@ -72,7 +72,8 @@ with browser secret entry for secret-bearing operations.
 The tool allowlist still applies. An arbitrary request can name additional
 repositories or refs in its body or response, so this escape hatch refuses
 execution whenever any repository, project or ref allowlist is configured,
-including an empty list. The dedicated tools remain available under those limits.
+including an empty list, or any repository-specific tool rule is present.
+The dedicated tools remain available under those limits.
 By default, writes require the existing browser confirmation of the exact
 method, path, query and body; GET, HEAD and OPTIONS do not. The confirmation
 tool list can require reads or allow writes without a browser, as for other tools.

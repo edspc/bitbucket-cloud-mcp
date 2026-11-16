@@ -50,6 +50,7 @@ func TestAPIProxyHonorsRestrictionsBeforeAnyRequest(t *testing.T) {
 	for _, policy := range []Policy{
 		{Repositories: []string{}}, {Repositories: []string{"repo-a"}}, {Projects: []string{}},
 		{Projects: []string{"APP"}}, {Refs: []string{}}, {Refs: []string{"branch:main"}}, {Tools: []string{"get_file"}},
+		{Tools: []string{"*", "!set_variable@repo-a"}}, {Tools: []string{"*", "get_file@repo-a"}},
 	} {
 		policy.APIProxyEnabled = true
 		cs := connectUUID(t, policy, func(http.ResponseWriter, *http.Request) { t.Error("restricted proxy reached API") })

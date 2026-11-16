@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"maps"
 	"os"
 	"os/exec"
@@ -110,6 +111,41 @@ func TestKeychainIntegrationOversizePreservesSettings(t *testing.T) {
 	saved, err := loadKeychain(keychain)
 	if err != nil || !maps.Equal(saved, original) {
 		t.Fatal("oversized configuration changed existing settings")
+	}
+}
+
+func TestKeychainIntegrationEditPreservesOtherSettings(t *testing.T) {
+	keychain := temporaryKeychain(t)
+	original := testConfiguration()
+	original["BITBUCKET_ALLOWED_PROJECTS"] = `["APP"]`
+	original["BITBUCKET_LOCAL_BROWSER"] = "true"
+	if err := saveKeychain(original, keychain); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, value string }{
+		{"BITBUCKET_API_TOKEN", "rotated-fake-token"},
+		{"BITBUCKET_ALLOWED_REPOS", `["repo-a","repo-b"]`},
+		{"BITBUCKET_ALLOWED_TOOLS", `["*","!delete_variable@repo-a"]`},
+	} {
+		saved, err := loadKeychain(keychain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		answers := strings.NewReader(tc.name + "\n" + tc.value + "\n")
+		values, err := promptConfigurationEdit(io.Discard, func(string, bool) (string, error) {
+			return readTerminalLine(answers)
+		}, saved)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = saveKeychain(values, keychain); err != nil {
+			t.Fatal(err)
+		}
+		original[tc.name] = tc.value
+		saved, err = loadKeychain(keychain)
+		if err != nil || !maps.Equal(saved, original) {
+			t.Fatal("single-field edit changed other saved Keychain settings")
+		}
 	}
 }
 

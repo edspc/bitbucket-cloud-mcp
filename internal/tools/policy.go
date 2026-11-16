@@ -20,13 +20,17 @@ type Policy struct {
 	APIProxyEnabled   bool // operator opt-in; never a tool argument
 	Repositories      []string
 	Projects          []string // exact project keys or UUIDs, checked by the client against live repository metadata
-	Tools             []string // empty allows all; otherwise exact names or "*"
+	Tools             []string // allow/deny rules: tool, !tool, tool@repo, !tool@repo; * matches all tools
 	ConfirmationTools []string // empty confirms writes; otherwise exact names or "*"
 	Refs              []string // exact "branch:<name>" or "tag:<name>" entries
 }
 
+func validRepositorySlug(repo string) bool {
+	return repo != "." && repo != ".." && repo != "" && strings.Trim(repo, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") == ""
+}
+
 func (p Policy) checkRepo(repo string) error {
-	if repo == "." || repo == ".." || repo == "" || strings.Trim(repo, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") != "" {
+	if !validRepositorySlug(repo) {
 		return errors.New("repo must be a repository slug, without path segments")
 	}
 	// With project limits, an unlisted repository may still be in an allowed project; the
@@ -59,9 +63,6 @@ func (p Policy) checkRef(kind, name string) error {
 }
 
 func (p Policy) check(name string, in any) error {
-	if len(p.Tools) > 0 && !slices.Contains(p.Tools, "*") && !slices.Contains(p.Tools, name) {
-		return errors.New("tool is not allowed by the server policy")
-	}
 	data, err := json.Marshal(in)
 	if err != nil {
 		return err
@@ -77,12 +78,17 @@ func (p Policy) check(name string, in any) error {
 	if err = json.Unmarshal(data, &args); err != nil {
 		return err
 	}
+	var repos []string
 	for _, repo := range []string{args.Repo, args.Source, args.Target} {
 		if repo != "" {
+			repos = append(repos, repo)
 			if err = p.checkRepo(repo); err != nil {
 				return err
 			}
 		}
+	}
+	if err = p.checkTool(name, repos); err != nil {
+		return err
 	}
 	if args.Scope == scopeWorkspace && (p.Repositories != nil || p.Projects != nil) {
 		return errors.New("workspace variables are not allowed by the server policy when repository access is restricted")

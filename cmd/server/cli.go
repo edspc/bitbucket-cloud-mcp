@@ -26,7 +26,7 @@ func commandLine(args []string, out io.Writer) (bool, error) {
 Run without arguments to serve MCP over stdin/stdout.
 The MCP client starts this process; no background service is needed.
 
-configure interactively prompts for all settings and saves them to macOS Keychain.
+configure edits one saved setting or runs full setup, saving to macOS Keychain.
 The API token is hidden; configure requires a terminal.
 Environment variables override saved Keychain parameters.
 
@@ -38,9 +38,11 @@ Required configuration parameters for MCP mode:
 Optional access limits (JSON arrays; unset allows all):
   BITBUCKET_ALLOWED_REPOS      Exact repository slugs; [] denies all
   BITBUCKET_ALLOWED_PROJECTS   Exact project keys or UUIDs; [] denies all
-  BITBUCKET_ALLOWED_TOOLS      Exact tool names; [] or ["*"] allows all
+  BITBUCKET_ALLOWED_TOOLS      tool, !tool, tool@repo, !tool@repo; * matches all tools
   BITBUCKET_ALLOWED_REFS       branch:<name> or tag:<name>; [] denies all
   With both repository and project lists, either list allows a repository.
+  Tool denials win. With only denials, other calls are allowed; [] allows all.
+  Repository-specific tool rules require an explicit repository in the call.
 
 Optional browser confirmation (JSON array; unset or [] confirms every write):
   BITBUCKET_CONFIRM_TOOLS      Exact tool names; ["*"] confirms every tool
@@ -52,7 +54,8 @@ Optional local browser (disabled by default):
 
 Optional API proxy (disabled by default):
   BITBUCKET_ENABLE_API_PROXY   Set true to register api_request
-  Proxy requests require unrestricted repository/project/ref policy.
+  Proxy requests require unrestricted repository/project/ref policy and no
+  repository-specific tool rules.
 
 --help and --version do not require environment configuration.
 Documentation: https://github.com/edspc/bitbucket-cloud-mcp#readme

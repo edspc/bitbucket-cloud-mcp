@@ -24,8 +24,8 @@ func (t *tools) apiRequest(ctx context.Context, req *mcp.CallToolRequest, in api
 	}
 	// Opaque paths and bodies can name more entities than their URL's repository. Fail closed
 	// rather than pretending the dedicated tools' repository and ref checks cover arbitrary APIs.
-	if t.policy.Repositories != nil || t.policy.Projects != nil || t.policy.Refs != nil {
-		return nil, apiRequestResult{}, errors.New("api_request is unavailable while repository, project or ref limits are configured; use the dedicated policy-aware tools")
+	if t.policy.Repositories != nil || t.policy.Projects != nil || t.policy.Refs != nil || t.policy.hasRepositoryToolRules() {
+		return nil, apiRequestResult{}, errors.New("api_request is unavailable while repository, project, ref or repository-specific tool limits are configured; use the dedicated policy-aware tools")
 	}
 	page, err := t.claimSecrets(req, in)
 	if err != nil {

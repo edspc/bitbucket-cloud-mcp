@@ -72,7 +72,7 @@ On macOS, `make test` exercises saving and loading through the real `security`
 utility using temporary Keychains. These tests do not change the default
 Keychain or store credentials in the login Keychain. Temporary Keychains are
 deleted during cleanup. The tests cover replacement, environment overrides,
-missing items, read failures, invalid JSON and preservation of existing settings
+single-field token and policy edits, missing items, read failures, invalid JSON and preservation of existing settings
 when a configuration is too large.
 
 On Linux and macOS, a terminal regression test uses Python 3's standard-library
