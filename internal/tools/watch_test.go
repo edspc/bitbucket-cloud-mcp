@@ -74,11 +74,16 @@ func TestWatchPipelineUntilCompleted(t *testing.T) {
 
 func TestWatchPipelineStopsWhenPaused(t *testing.T) {
 	f := newFake()
-	f.addRun("repo-a", bitbucket.State{Name: "IN_PROGRESS", Stage: &bitbucket.StateDetail{Name: "PAUSED"}})
+	f.addRun("repo-a", bitbucket.State{Name: "IN_PROGRESS", Stage: &bitbucket.StateDetail{Name: "PAUSED"}},
+		bitbucket.Step{UUID: "{manual-step}", State: bitbucket.State{Name: "PENDING"}})
 	res := decodeResult[watchPipelineResult](t, mustCall(t, connect(t, f, nil), "watch_pipeline", map[string]any{"repo": "repo-a", "pipeline": "1"}))
 	if res.Outcome != "paused" || len(res.Updates) != 0 {
 		t.Fatalf("result = %+v", res)
 	}
+	if res.Pipeline == nil || len(res.Pipeline.Steps) != 1 || res.Pipeline.Steps[0].URL != "https://bitbucket.org/ws/repo-a/pipelines/results/1/steps/%7Bmanual-step%7D" {
+		t.Fatalf("paused watch lost the manual step link: %+v", res)
+	}
+	expectManualStepNotice(t, res.Pipeline.Notice)
 }
 
 func TestWatchPipelineTimeout(t *testing.T) {

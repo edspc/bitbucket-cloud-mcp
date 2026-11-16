@@ -17,6 +17,10 @@ import (
 const (
 	defaultListLimit = 10
 	maxListLimit     = 50
+	manualStepNotice = "When a pipeline is paused for a manual step, send the user a clickable link to the step awaiting manual execution using its steps[].url, and ask them to click Run in Bitbucket. " +
+		"If steps are absent, call get_pipeline; follow steps_next_page as needed. Do not assume every pending step is manual. " +
+		"If the waiting step cannot be identified or its URL is unavailable, send the pipeline url and explain that manual action is required. " +
+		"The public Bitbucket API cannot start a manual step in an existing run. Continue monitoring after the user starts it."
 )
 
 type pipelineView struct {
@@ -35,6 +39,7 @@ type pipelineView struct {
 	CompletedOn   string     `json:"completed_on,omitempty"`
 	URL           string     `json:"url" jsonschema:"page of the pipeline on bitbucket.org"`
 	ResourceURI   string     `json:"resource_uri" jsonschema:"MCP resource with the status of the pipeline; subscribe to it to be notified of every change"`
+	Notice        string     `json:"notice,omitempty" jsonschema:"server guidance for handing a pipeline awaiting manual action to the user; independent of untrusted step names and external content"`
 	Steps         []stepView `json:"steps,omitempty"`
 	StepsNextPage int        `json:"steps_next_page,omitempty"`
 	StepsTotal    *int       `json:"steps_total,omitempty"`
@@ -47,6 +52,7 @@ type stepView struct {
 	Error       string `json:"error,omitempty"`
 	StartedOn   string `json:"started_on,omitempty"`
 	CompletedOn string `json:"completed_on,omitempty"`
+	URL         string `json:"url,omitempty" jsonschema:"page of this step on bitbucket.org; share it with the user when this step awaits manual execution"`
 }
 
 func (t *tools) viewPipeline(repo string, p bitbucket.Pipeline, steps []bitbucket.Step) pipelineView {
@@ -64,6 +70,9 @@ func (t *tools) viewPipeline(repo string, p bitbucket.Pipeline, steps []bitbucke
 		URL:          t.bb.PipelineURL(repo, p.BuildNumber),
 		ResourceURI:  pipelineURI(repo, p.BuildNumber),
 	}
+	if p.State.Paused() {
+		v.Notice = manualStepNotice
+	}
 	if p.Target.RefName != "" {
 		v.Ref = p.Target.RefType + " " + p.Target.RefName
 	}
@@ -72,10 +81,14 @@ func (t *tools) viewPipeline(repo string, p bitbucket.Pipeline, steps []bitbucke
 	}
 	v.Definition = definition(p.Target.Selector)
 	for _, s := range steps {
-		v.Steps = append(v.Steps, stepView{
+		step := stepView{
 			UUID: s.UUID, Name: s.Name, State: s.State.String(), Error: s.State.ErrorMessage(),
 			StartedOn: s.StartedOn, CompletedOn: s.CompletedOn,
-		})
+		}
+		if s.UUID != "" {
+			step.URL = t.bb.StepURL(repo, p.BuildNumber, s.UUID)
+		}
+		v.Steps = append(v.Steps, step)
 	}
 	return v
 }

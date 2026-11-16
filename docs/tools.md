@@ -349,6 +349,17 @@ supplies it. Only the requested step page is downloaded. Pipeline resources and
 States read like `PENDING`, `IN_PROGRESS/RUNNING`, `IN_PROGRESS/PAUSED` (waits
 for a manual step) or `COMPLETED/FAILED`.
 
+Each step includes its Bitbucket `url` when its UUID is available. A pipeline
+paused for manual execution includes a server-generated `notice` instructing the
+model to send the user a clickable link to the waiting step and ask them to click
+**Run** in Bitbucket. The same guidance is advertised in MCP server instructions
+and pipeline tool descriptions. Listings omit steps: use `get_pipeline` and
+follow `steps_next_page` to inspect them. A pending step alone does not establish
+that it is manual. If the waiting step cannot be identified or its link is
+unavailable, provide the pipeline URL and explain that manual action is needed.
+The public Bitbucket API cannot start a manual step in an existing run.
+Continue monitoring after the user starts the step.
+
 ### `watch_pipeline`
 
 Waits until the pipeline completes, pauses for a manual step or

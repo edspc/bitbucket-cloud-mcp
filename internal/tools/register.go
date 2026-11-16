@@ -65,7 +65,7 @@ func newServer(impl *mcp.Implementation, t *tools) *mcp.Server {
 	t.pageTemplate = template.Must(template.New("page").Parse(secretPageHTML))
 	t.pending = map[string]*pendingSecrets{}
 	t.watches = map[string]*pipelineWatch{}
-	s := mcp.NewServer(impl, &mcp.ServerOptions{SubscribeHandler: t.subscribe, UnsubscribeHandler: t.unsubscribe})
+	s := mcp.NewServer(impl, &mcp.ServerOptions{Instructions: manualStepNotice, SubscribeHandler: t.subscribe, UnsubscribeHandler: t.unsubscribe})
 	t.server = s
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true}
 	write := &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true)}
@@ -179,13 +179,13 @@ func newServer(impl *mcp.Implementation, t *tools) *mcp.Server {
 		Description: "List the pipelines of a repository, newest first, a page at a time: pass next_page back as " +
 			"page, with the same filters and limit, for older ones. Filters pick pipelines of a branch, a ref type " +
 			"or a commit, of a part of bitbucket-pipelines.yml such as 'custom: deploy', or started by push, " +
-			"manually, by a schedule or by a parent step (child pipelines).",
+			"manually, by a schedule or by a parent step (child pipelines). Paused results include a notice: get their steps and send the user the waiting step's URL for manual execution.",
 		Annotations: readOnly,
 	}, guarded(t, t.listPipelines))
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_pipeline",
 		Title:       "Get pipeline status",
-		Description: "Get the status of a pipeline by build number or UUID, with one page of its steps. Pass steps_next_page as steps_page with the same pipeline and steps_limit for more steps.",
+		Description: "Get the status of a pipeline by build number or UUID, with one page of its steps and their Bitbucket URLs. Pass steps_next_page as steps_page with the same pipeline and steps_limit for more steps. When paused for a manual step, follow notice and send the user the waiting step's URL.",
 		Annotations: readOnly,
 	}, guarded(t, t.getPipeline))
 	mcp.AddTool(s, &mcp.Tool{
@@ -198,7 +198,7 @@ func newServer(impl *mcp.Implementation, t *tools) *mcp.Server {
 			"poll_interval_seconds sets this call's base polling interval (1 to 60 seconds, 30 by default), doubled with project restrictions. Polling slows down to account for extra log requests. " +
 			"Clients that support resource subscriptions can subscribe to the pipeline's " +
 			"resource_uri instead. The server allows only two pipelines to be polled at a time, " +
-			"by watches and subscriptions together.",
+			"by watches and subscriptions together. On paused, follow pipeline.notice and send the user the waiting step's URL so they can click Run in Bitbucket.",
 		Annotations: readOnly,
 	}, guarded(t, t.watchPipeline))
 	mcp.AddTool(s, &mcp.Tool{
