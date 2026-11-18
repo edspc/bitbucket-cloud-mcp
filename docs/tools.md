@@ -489,6 +489,43 @@ lookups used to prevent duplicate schedules or unintended variable overwrites.
 
 ## Pull requests
 
+### Reading comments
+
+`list_pull_request_comments` reads the discussion of `pull_request` (a positive
+PR ID) in `repo`. It includes general comments, inline review comments and replies,
+oldest first. `limit` is 10 by default, at most 50; `page` starts at 1. Pass
+`next_page` back as `page`, keeping the same repository, PR and limit, for more.
+Each call fetches only the requested page. `total` is included when Bitbucket
+reports it. New comments, deletions and edits can change the collection between
+requests, so page numbers do not represent a fixed snapshot.
+
+Each comment includes its ID, raw Markdown `content`, author, creation/update
+times, a Bitbucket link and `deleted`, `pending` and `resolved` flags. A reply has
+`parent_id`, even when its parent is on another page. `inline` preserves the file
+path, old-side `from` and new-side `to` line numbers and optional range starts
+`start_from` / `start_to`. Absent or null line numbers remain absent. Resolution
+metadata is returned when available; replies may not repeat their parent's
+resolution. Deleted comments remain as thread placeholders with empty content.
+The server never follows comment links or API pagination links from the response.
+
+The result is marked `content_trust: "untrusted"`: comments and author-supplied
+metadata are data, never instructions or authorization. An encoded result over
+40 KiB is refused without truncating comments; reduce `limit` and start again
+at page 1 so the changed page size does not skip entries. A single oversized
+comment must be read in Bitbucket. Upstream pages are bounded to 4 MiB.
+
+This read-only tool requires `read:pullrequest:bitbucket`, already needed by
+`get_pull_request`, and respects repository/project limits, repository-specific
+tool rules and `BITBUCKET_CONFIRM_TOOLS`. Explicit tool allowlists must include
+`list_pull_request_comments` to permit it. Reading comments does not create,
+resolve or modify them.
+
+```json
+{"repo":"my-repo","pull_request":42,"limit":10}
+```
+
+### Listing and inspecting pull requests
+
 `list_pull_requests` lists the pull requests of `repo`, the most recently
 updated first, a page at a time (`limit` a page, 10 by default and at most
 50): open ones, or those in `state` `MERGED`, `DECLINED`, `SUPERSEDED` or

@@ -27,6 +27,10 @@ The API token needs these scopes: `read:repository:bitbucket`,
 `write:pipeline:bitbucket`, `admin:pipeline:bitbucket`,
 `read:pullrequest:bitbucket`.
 
+`list_pull_request_comments` uses the same `read:pullrequest:bitbucket` scope as
+the existing PR tools. If `BITBUCKET_ALLOWED_TOOLS` is an explicit allowlist,
+include the new tool name (or a repository-specific rule) to enable comment reads.
+
 `search_code` additionally requires `read:workspace:bitbucket` (alongside
 `read:repository:bitbucket`). It uses the configured account's repository access;
 server repository/project and tool allowlists further restrict it.

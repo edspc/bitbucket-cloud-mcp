@@ -69,6 +69,7 @@ func TestInstalledBinary(t *testing.T) {
 		t.Fatalf("list tools: %+v, %v", list, err)
 	}
 	foundHistory := false
+	foundComments := false
 	for _, tool := range list.Tools {
 		if tool.Name == "api_request" {
 			t.Fatal("API proxy registered without explicit opt-in")
@@ -76,9 +77,18 @@ func TestInstalledBinary(t *testing.T) {
 		if tool.Name == "list_commits" {
 			foundHistory = true
 		}
+		if tool.Name == "list_pull_request_comments" {
+			foundComments = true
+			if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
+				t.Fatal("PR comment reader must be marked read-only")
+			}
+		}
 	}
 	if !foundHistory {
 		t.Fatal("commit history tool is missing")
+	}
+	if !foundComments {
+		t.Fatal("PR comment reader is missing")
 	}
 	if err = session.Close(); err != nil {
 		t.Fatalf("stdio shutdown: %v", err)
