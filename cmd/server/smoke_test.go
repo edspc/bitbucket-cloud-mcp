@@ -70,7 +70,14 @@ func TestInstalledBinary(t *testing.T) {
 	}
 	foundHistory := false
 	foundComments := false
+	foundCommentWriter := false
 	for _, tool := range list.Tools {
+		if tool.Name == "create_pull_request_comment" {
+			foundCommentWriter = true
+			if tool.Annotations == nil || tool.Annotations.ReadOnlyHint || tool.Annotations.IdempotentHint {
+				t.Fatal("PR comment writer must be marked as a non-idempotent write")
+			}
+		}
 		if tool.Name == "api_request" {
 			t.Fatal("API proxy registered without explicit opt-in")
 		}
@@ -89,6 +96,9 @@ func TestInstalledBinary(t *testing.T) {
 	}
 	if !foundComments {
 		t.Fatal("PR comment reader is missing")
+	}
+	if !foundCommentWriter {
+		t.Fatal("PR comment writer is missing")
 	}
 	if err = session.Close(); err != nil {
 		t.Fatalf("stdio shutdown: %v", err)

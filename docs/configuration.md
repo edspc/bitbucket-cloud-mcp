@@ -31,6 +31,13 @@ The API token needs these scopes: `read:repository:bitbucket`,
 the existing PR tools. If `BITBUCKET_ALLOWED_TOOLS` is an explicit allowlist,
 include the new tool name (or a repository-specific rule) to enable comment reads.
 
+`create_pull_request_comment` creates comments and replies using that same
+`read:pullrequest:bitbucket` scope: Bitbucket's PR read permission includes
+commenting. See [Atlassian's permission reference](https://support.atlassian.com/bitbucket-cloud/docs/api-token-permissions/).
+Explicit tool allowlists must include `create_pull_request_comment` (or a
+repository-specific rule). It requires browser confirmation by default, like
+other write tools; an explicit `BITBUCKET_CONFIRM_TOOLS` list overrides that default.
+
 `search_code` additionally requires `read:workspace:bitbucket` (alongside
 `read:repository:bitbucket`). It uses the configured account's repository access;
 server repository/project and tool allowlists further restrict it.

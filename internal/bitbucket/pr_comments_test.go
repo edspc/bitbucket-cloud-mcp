@@ -1,12 +1,96 @@
 package bitbucket
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 )
+
+func TestCreatePullRequestCommentPayloadAndAuth(t *testing.T) {
+	for _, parent := range []int{0, 11} {
+		t.Run(fmt.Sprint(parent), func(t *testing.T) {
+			requests := 0
+			content := "  Reply **Markdown**\n<script>text</script>\n"
+			c := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				if r.Method != http.MethodPost || r.URL.Path != "/2.0/repositories/ws/repo-a/pullrequests/7/comments" || r.Header.Get("Content-Type") != "application/json" {
+					t.Errorf("unexpected write: %s %s", r.Method, r.URL)
+				}
+				if user, token, ok := r.BasicAuth(); !ok || user != testEmail || token != testToken {
+					t.Error("write did not use shared auth")
+				}
+				var body map[string]json.RawMessage
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatal(err)
+				}
+				var raw commentContent
+				if err := json.Unmarshal(body["content"], &raw); err != nil || raw.Raw != content {
+					t.Fatalf("raw Markdown changed: %+v, %v", raw, err)
+				}
+				if parent == 0 {
+					if len(body) != 1 {
+						t.Fatalf("general comment has extra fields: %s", body)
+					}
+				} else if string(body["parent"]) != `{"id":11}` || len(body) != 2 {
+					t.Fatalf("reply parent missing or extra fields: %s", body)
+				}
+				w.WriteHeader(http.StatusCreated)
+				_, _ = fmt.Fprint(w, `{"id":101,"links":{"html":{"href":"https://evil.invalid"}}}`)
+			})
+			out, err := c.CreatePullRequestComment(t.Context(), "repo-a", 7, content, parent)
+			if err != nil || out.ID != 101 || requests != 1 {
+				t.Fatalf("create: %+v, requests=%d, err=%v", out, requests, err)
+			}
+		})
+	}
+}
+
+func TestGetPullRequestCommentUsesPRRoute(t *testing.T) {
+	c := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/2.0/repositories/ws/repo-a/pullrequests/7/comments/11" {
+			t.Errorf("wrong parent lookup: %s %s", r.Method, r.URL)
+		}
+		_, _ = fmt.Fprint(w, `{"id":11,"content":{"raw":"parent"},"deleted":true}`)
+	})
+	comment, err := c.GetPullRequestComment(t.Context(), "repo-a", 7, 11)
+	if err != nil || comment.ID != 11 || !comment.Deleted || comment.Content.Raw != "parent" {
+		t.Fatalf("parent lookup: %+v, %v", comment, err)
+	}
+}
+
+func TestCommentWritesValidateAndDoNotRetryAPIErrors(t *testing.T) {
+	c := newTestClient(func(http.ResponseWriter, *http.Request) { t.Error("invalid write reached API") })
+	for _, args := range []struct {
+		id, parent int
+		content    string
+	}{
+		{0, 0, "text"}, {7, -1, "text"}, {7, 0, " \t\n"}, {7, 0, strings.Repeat("x", MaxCommentBytes+1)},
+	} {
+		if _, err := c.CreatePullRequestComment(t.Context(), "repo-a", args.id, args.content, args.parent); err == nil {
+			t.Fatal("accepted invalid comment write")
+		}
+	}
+	if _, err := c.GetPullRequestComment(t.Context(), "repo-a", 7, 0); err == nil {
+		t.Fatal("accepted invalid parent ID")
+	}
+	for _, status := range []int{403, 404, 429, 503} {
+		requests := 0
+		c = newTestClient(func(w http.ResponseWriter, _ *http.Request) {
+			requests++
+			w.Header().Set("Retry-After", "17")
+			w.WriteHeader(status)
+			_, _ = fmt.Fprint(w, `{"error":{"message":"cannot comment"}}`)
+		})
+		_, err := c.CreatePullRequestComment(t.Context(), "repo-a", 7, "text", 0)
+		var apiErr *APIError
+		if requests != 1 || !errors.As(err, &apiErr) || apiErr.Status != status || apiErr.Message != "cannot comment" || status == 429 && apiErr.RetryAfter <= 0 {
+			t.Fatalf("write error lost or retried: requests=%d, err=%v", requests, err)
+		}
+	}
+}
 
 func TestPullRequestCommentPageUsesSharedAuthAndIgnoresNext(t *testing.T) {
 	requests := 0

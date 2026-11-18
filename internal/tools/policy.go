@@ -177,7 +177,7 @@ func (p Policy) requiresCallConfirmation(name string, in any) bool {
 
 func isWriteTool(name string) bool {
 	switch name {
-	case "api_request", "link_repos_by_key", "link_repos_by_token", "set_variable", "delete_variable", "run_pipeline", "stop_pipeline", "add_schedule", "delete_schedule", "create_deployment":
+	case "api_request", "link_repos_by_key", "link_repos_by_token", "set_variable", "delete_variable", "run_pipeline", "stop_pipeline", "add_schedule", "delete_schedule", "create_deployment", "create_pull_request_comment":
 		return true
 	}
 	return false

@@ -35,11 +35,15 @@ func changeCases() []struct {
 		{"run_pipeline", map[string]any{"repo": "repo-a", "branch": "main", "custom": "deploy", "secret_variables": []string{"TOKEN"}}},
 		{"add_schedule", map[string]any{"repo": "repo-a", "branch": "main", "pipeline": "default", "cron": "0 0 2 * * ? *"}},
 		{"delete_schedule", map[string]any{"repo": "repo-a", "schedule": "{schedule}"}},
+		{"create_pull_request_comment", commentArgs(0)},
+		{"create_pull_request_comment", commentArgs(11)},
 	}
 }
 
 func approvalFake() *fakeBitbucket {
 	f := newFake()
+	addPullRequest(f)
+	f.prComments["repo-a/7"] = map[int]bitbucket.PullRequestComment{11: {ID: 11}}
 	f.addRun("repo-a", running())
 	f.vars["repo-b"] = []bitbucket.Variable{{UUID: "{v}", Key: "EXISTING"}}
 	f.schedules["repo-a"] = []bitbucket.Schedule{{UUID: "{schedule}", Target: bitbucket.RefTarget("branch", "main", "")}}

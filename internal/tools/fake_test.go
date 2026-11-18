@@ -71,6 +71,9 @@ type fakeBitbucket struct {
 	onPipelineGet func(n int)
 
 	pipelineStopStatus int // a failure the stop endpoint answers with
+
+	prComments    map[string]map[int]bitbucket.PullRequestComment // by repo/PR, then comment ID
+	commentBodies []string
 }
 
 // fakeChange is how a pull request changes one file.
@@ -208,6 +211,7 @@ func newFake() *fakeBitbucket {
 		schedules:   map[string][]bitbucket.Schedule{},
 
 		pullRequests: map[string]*bitbucket.PullRequest{},
+		prComments:   map[string]map[int]bitbucket.PullRequestComment{},
 		prStatuses:   map[string][]bitbucket.CommitStatus{},
 		prChanges:    map[string][]fakeChange{},
 	}
@@ -454,6 +458,35 @@ func (f *fakeBitbucket) handler(t *testing.T) http.Handler {
 		writeCollectionPage(w, r, out)
 	})
 	prKey := func(r *http.Request) string { return r.PathValue("repo") + "/" + r.PathValue("id") }
+	mux.HandleFunc("GET "+repo+"/pullrequests/{id}/comments/{comment}", func(w http.ResponseWriter, r *http.Request) {
+		f.prRequests = append(f.prRequests, "comment")
+		id, _ := strconv.Atoi(r.PathValue("comment"))
+		comment, ok := f.prComments[prKey(r)][id]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		writeJSON(w, comment)
+	})
+	mux.HandleFunc("POST "+repo+"/pullrequests/{id}/comments", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+		}
+		f.commentBodies = append(f.commentBodies, string(body))
+		var comment bitbucket.PullRequestComment
+		if err = json.Unmarshal(body, &comment); err != nil {
+			t.Error(err)
+		}
+		f.nextID++
+		comment.ID = f.nextID
+		if f.prComments[prKey(r)] == nil {
+			f.prComments[prKey(r)] = map[int]bitbucket.PullRequestComment{}
+		}
+		f.prComments[prKey(r)][comment.ID] = comment
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, comment)
+	})
 	mux.HandleFunc("GET "+repo+"/pullrequests/{id}", func(w http.ResponseWriter, r *http.Request) {
 		f.prRequests = append(f.prRequests, "pull request")
 		pr, ok := f.pullRequests[prKey(r)]

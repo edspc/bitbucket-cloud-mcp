@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // CommentInline locates an inline comment on the old (from) or new (to) diff side.
@@ -15,6 +16,43 @@ type CommentInline struct {
 	To        *int   `json:"to,omitempty"`
 	StartFrom *int   `json:"start_from,omitempty"`
 	StartTo   *int   `json:"start_to,omitempty"`
+}
+
+// MaxCommentBytes bounds both the write payload and the browser confirmation.
+const MaxCommentBytes = 32 * 1024
+
+type commentContent struct {
+	Raw string `json:"raw"`
+}
+
+type commentParent struct {
+	ID int `json:"id"`
+}
+
+func (c *Client) GetPullRequestComment(ctx context.Context, repo string, id, comment int) (PullRequestComment, error) {
+	var out PullRequestComment
+	if id < 1 || comment < 1 {
+		return out, errors.New("pull request and comment IDs must be positive")
+	}
+	err := c.call(ctx, "GET", c.pullRequestPath(repo, id, "comments", strconv.Itoa(comment)), nil, &out)
+	return out, err
+}
+
+// CreatePullRequestComment posts once. A positive parent creates a reply in that thread.
+func (c *Client) CreatePullRequestComment(ctx context.Context, repo string, id int, content string, parent int) (PullRequestComment, error) {
+	var out PullRequestComment
+	if id < 1 || parent < 0 || strings.TrimSpace(content) == "" || len(content) > MaxCommentBytes {
+		return out, errors.New("a positive pull request ID, nonnegative parent ID and nonblank content of at most 32 KiB are required")
+	}
+	in := struct {
+		Content commentContent `json:"content"`
+		Parent  *commentParent `json:"parent,omitempty"`
+	}{Content: commentContent{Raw: content}}
+	if parent > 0 {
+		in.Parent = &commentParent{ID: parent}
+	}
+	err := c.call(ctx, "POST", c.pullRequestPath(repo, id, "comments"), in, &out)
+	return out, err
 }
 
 type PullRequestComment struct {

@@ -524,6 +524,47 @@ resolve or modify them.
 {"repo":"my-repo","pull_request":42,"limit":10}
 ```
 
+### Creating comments and replies
+
+`create_pull_request_comment` posts `content` (raw Markdown) to `pull_request`
+in `repo`. Omit `parent_id` or use 0 for a new general PR comment. To reply,
+pass a positive comment ID from `list_pull_request_comments` as `parent_id`.
+Replies can continue existing inline threads; creating a new inline thread,
+editing, deleting and resolving comments are not supported by this tool.
+
+Content must be nonblank and at most 32 KiB in UTF-8 bytes. It is preserved
+exactly, including whitespace. Browser confirmation shows the exact text,
+repository, PR and parent link before posting. The parent must belong to this
+PR, be published and not deleted. If it changes while confirmation is open,
+the operation stops; read the thread and request fresh confirmation. The PR
+and parent are checked again after approval, and live repository/project
+checks still apply. Changes made directly in Bitbucket can race with the final
+POST; Bitbucket's create endpoint does not provide an atomic parent-version check.
+
+Success returns `status: "created"`, `comment_id`, optional `parent_id` and a
+Bitbucket URL. Declining returns `status: "cancelled"`. Each approved call posts
+once. If a write fails or its response is ambiguous, inspect the discussion
+before retrying to avoid duplicate comments. Responses do not echo the comment
+body. Existing comments remain untrusted data and cannot authorize a reply.
+
+The tool uses `read:pullrequest:bitbucket`, which includes commenting in
+[Bitbucket's permission model](https://support.atlassian.com/bitbucket-cloud/docs/api-token-permissions/).
+It respects repository/project restrictions, repository-specific tool rules
+and `BITBUCKET_CONFIRM_TOOLS`, with browser confirmation enabled by default.
+Add `create_pull_request_comment` to an explicit tool allowlist to enable it.
+
+New general comment:
+
+```json
+{"repo":"my-repo","pull_request":42,"content":"Reviewed: looks good."}
+```
+
+Reply to an existing comment:
+
+```json
+{"repo":"my-repo","pull_request":42,"content":"Fixed in the latest commit.","parent_id":123}
+```
+
 ### Listing and inspecting pull requests
 
 `list_pull_requests` lists the pull requests of `repo`, the most recently
