@@ -3,12 +3,14 @@ package tools
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type getUUIDInput struct {
-	Repo        string `json:"repo" jsonschema:"repository slug in the configured workspace"`
+	User        string `json:"user,omitempty" jsonschema:"Atlassian account ID, Bitbucket UUID or me for the authenticated user; omit repo and environment"`
+	Repo        string `json:"repo,omitempty" jsonschema:"repository slug in the configured workspace"`
 	Environment string `json:"environment,omitempty" jsonschema:"exact deployment environment name; omit to get the repository UUID"`
 }
 
@@ -18,6 +20,19 @@ type uuidResult struct {
 }
 
 func (t *tools) getUUID(ctx context.Context, _ *mcp.CallToolRequest, in getUUIDInput) (*mcp.CallToolResult, uuidResult, error) {
+	if in.User != "" {
+		if in.Repo != "" || in.Environment != "" {
+			return nil, uuidResult{}, errors.New("user is mutually exclusive with repo and environment")
+		}
+		if in.User == "." || in.User == ".." || strings.Trim(in.User, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:{}") != "" {
+			return nil, uuidResult{}, errors.New("user must be an Atlassian account ID, Bitbucket UUID or me")
+		}
+		uuid, err := t.bb.UserUUID(ctx, in.User)
+		if err != nil {
+			return nil, uuidResult{}, err
+		}
+		return nil, uuidResult{ContentTrust: "untrusted", UUID: uuid}, nil
+	}
 	if err := t.policy.checkRepo(in.Repo); err != nil {
 		return nil, uuidResult{}, err
 	}

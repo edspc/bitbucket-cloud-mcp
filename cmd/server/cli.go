@@ -14,14 +14,16 @@ func commandLine(args []string, out io.Writer) (bool, error) {
 		return false, nil
 	}
 	if len(args) != 1 {
-		return true, errors.New("expected no arguments, --help or --version")
+		return true, errors.New("expected no arguments, --read-only, --help or --version")
 	}
 	var err error
 	switch args[0] {
+	case "--read-only":
+		return false, nil
 	case "--version":
 		_, err = fmt.Fprintf(out, "bitbucket-cloud-mcp %s\n", version)
 	case "--help", "-h":
-		_, err = io.WriteString(out, `Usage: bitbucket-cloud-mcp [--help | --version]
+		_, err = io.WriteString(out, `Usage: bitbucket-cloud-mcp [--read-only | --help | --version]
 
 Run without arguments to serve MCP over stdin/stdout.
 The MCP client starts this process; no background service is needed.
@@ -41,6 +43,9 @@ Optional access limits (JSON arrays; unset allows all):
 Optional browser confirmation (JSON array; unset or [] confirms every write):
   BITBUCKET_CONFIRM_TOOLS      Exact tool names; ["*"] confirms every tool
   Secret entry always requires the browser page.
+
+Optional read-only mode:
+  --read-only or BITBUCKET_READ_ONLY=true registers only read-only tools.
 
 Optional API proxy (disabled by default):
   BITBUCKET_ENABLE_API_PROXY   Set true to register api_request

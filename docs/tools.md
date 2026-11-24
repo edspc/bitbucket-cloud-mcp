@@ -200,7 +200,83 @@ Example tool arguments:
 {"query":"handlePayment","language":"go","path":"src/*","limit":20}
 ```
 
-## Repository and deployment UUIDs
+## Repository settings
+
+`get_repository` reads a repository by its `repo` slug. It returns its name,
+slug, project, description, language, privacy, main branch and URL. This
+requires `read:repository:bitbucket`. A call to `manage_repository` with only
+`repo` returns the same settings.
+
+To update a repository, call `manage_repository` with at least one of
+`slug`, `project` (destination project
+key in the configured workspace), `description` or `language` (for example,
+`go`). Omitted settings are left as they are. Use an empty string to clear
+the description or language.
+
+Bitbucket derives the slug from the repository name, so changing the slug
+also changes the name. The result contains the slug Bitbucket returns and
+the resulting URL. Both the current repository and its destination must
+satisfy server access policy. Updates require confirmation by default.
+
+### Git branch restrictions
+
+`get_branch_restrictions` reads rules using `repo` and optional `page` and
+`limit`. Supply `id` instead of pagination to read a single rule. The
+result includes `pipelines_source_branches` when Bitbucket returns it. This
+read-only tool still requires `admin:repository:bitbucket` for this API.
+
+Use `manage_repository` with `repo` and `branch_restriction` to manage
+repository-level Git branch restrictions. Make a separate call for a
+repository settings update. The API token needs `admin:repository:bitbucket`.
+
+- `list` returns a page of rules, including IDs. Supply `page` (starting at
+  1) and `limit` (10 by default, up to 50). Pass back `next_page` when present.
+- `get` returns the rule with the supplied `id`.
+- `create` takes a `rule`. Set `kind` and either a destination `pattern`
+  for `glob` (the default) or `branch_match_kind: "branching_model"` with
+  `branch_type` such as `production`, `development` or `release`.
+- `update` takes an `id` and a `rule` with the fields to change.
+- `delete` takes an `id`. Removing a rule lifts that specific restriction.
+  Other matching rules can still apply.
+
+For direct write and PR merge exceptions, use `push` and `restrict_merges`.
+On creation, supply both `users` (objects with `uuid` or `account_id`) and
+`groups` (objects with `slug`). Empty arrays grant no exceptions of that
+type. Use `force` to block history rewrites and `delete` to block branch
+deletion. A `push` rule can also set `pipelines_source_branches`. These are
+branch names on which permitted pipelines run. The rule's `pattern` or
+`branch_type` selects the destination branch. The tool reads a rule back
+after writing this field to verify that Bitbucket saved it. If Bitbucket
+omits the field, the tool reports that the write could not be verified,
+even when the requested list was empty.
+
+```json
+{"repo":"my-repo","branch_restriction":{"action":"create","rule":{"kind":"push","pattern":"main","users":[],"groups":[],"pipelines_source_branches":["release"]}}}
+```
+
+Merge checks and conditions use Bitbucket's `kind` values directly. Pass a
+numeric `value` for approval counts, passing builds or maximum commits
+behind (including zero). Supported kinds include:
+
+| Setting | `kind` |
+| --- | --- |
+| Minimum approvals | `require_approvals_to_merge` |
+| Minimum approvals from default reviewers | `require_default_reviewer_approvals_to_merge` |
+| No requested changes | `require_no_changes_requested` |
+| No unresolved tasks | `require_tasks_to_be_completed` |
+| No unresolved comments | `require_all_comments_resolved` |
+| Minimum passing builds | `require_passing_builds_to_merge` |
+| Maximum commits behind destination | `require_commits_behind` |
+| Reset requested changes on source updates | `reset_pullrequest_changes_requested_on_change` |
+| Auto-merge when builds pass | `allow_auto_merge_when_builds_pass` |
+| Reset approvals on source updates | `reset_pullrequest_approvals_on_change` |
+| Keep approvals when the diff is unchanged | `smart_reset_pullrequest_approvals` |
+| Block merges with unresolved checks | `enforce_merge_checks` |
+
+Bitbucket applies workspace plan limits to merge checks. Writes require
+confirmation by default. See the [Bitbucket branch restrictions API](https://developer.atlassian.com/cloud/bitbucket/rest/api-group-branch-restrictions/).
+
+## Repository, deployment and user UUIDs
 
 `get_uuid` returns the UUID of `repo` in the configured workspace. Supply
 `environment` with the exact deployment environment name to get that
@@ -209,6 +285,12 @@ without normalization: braces, hyphens and letter case are preserved, for
 example `{"content_trust":"untrusted","uuid":"{01234567-89ab-cdef-0123-456789abcdef}"}`.
 An unknown environment or a missing UUID is an error. This read-only tool
 respects the repository, project and tool access limits.
+
+To get a user's UUID, pass `user` with their Atlassian account ID or Bitbucket
+UUID. Use `{"user":"me"}` for the authenticated account. User lookups require
+`read:user:bitbucket` and cannot be combined with `repo` or `environment`.
+Repository and project allowlists do not apply to user lookups. The tool
+allowlist and confirmation policy still apply.
 
 ## Repository links
 
@@ -437,11 +519,17 @@ the selected log is independent of the page of alternatives shown.
 
 ## Deployment environments
 
-`create_deployment` creates a deployment environment in `repo`, with `name` and
-`environment_type` (`Test`, `Staging` or `Production`). It returns the environment
-UUID and name. Existing names are refused rather than overwritten. This tool
-creates the Bitbucket environment used by deployment variables and pipeline
-steps; use `run_pipeline` to execute a deployment pipeline.
+Call `manage_deployment` with `repo` and `name` to look up an existing
+environment by its exact name. To create a new one, pass `create: true` and
+`environment_type` (`Test`, `Staging` or `Production`). Creation requires
+confirmation by default and rejects duplicate names. The result includes the
+environment name and UUID. Use `run_pipeline` to execute a deployment pipeline.
+
+Bitbucket Cloud exposes deployment branch, user and group restrictions in
+Repository settings > Pipelines > Deployments. The tool rejects
+`allowed_branches`, `allowed_users` and `allowed_groups` before creating an
+environment. Track public REST API support in [BCLOUD-21703](https://jira.atlassian.com/browse/BCLOUD-21703)
+and [BCLOUD-24203](https://jira.atlassian.com/browse/BCLOUD-24203).
 
 ## Schedules
 

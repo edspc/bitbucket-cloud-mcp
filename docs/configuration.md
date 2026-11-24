@@ -27,6 +27,24 @@ The API token needs these scopes: `read:repository:bitbucket`,
 `read:repository:bitbucket`). It uses the configured account's repository access;
 server repository/project and tool allowlists further restrict it.
 
+User lookups with `get_uuid` additionally require `read:user:bitbucket`.
+`manage_repository` uses `admin:repository:bitbucket` and requires
+`read:project:bitbucket` when the server must resolve the destination project
+key to check a project UUID allowlist.
+
+## Read-only mode
+
+Start the server with `--read-only` or set `BITBUCKET_READ_ONLY=true`.
+Either enables the mode. The flag takes effect even when the environment
+variable is `false`. Invalid boolean values stop startup.
+
+In this mode, the server registers only read-only tools. Mixed operations
+such as `manage_repository` and `manage_deployment` are unavailable, as is
+`api_request`, even when explicitly enabled. Use `get_repository`,
+`get_branch_restrictions` and `get_uuid` for the corresponding reads.
+Repository, project, tool and confirmation policy still applies. Read-only
+pipeline resources and subscriptions remain available.
+
 ## Optional API proxy
 
 `BITBUCKET_ENABLE_API_PROXY=true` registers the `api_request` escape hatch.
@@ -50,7 +68,10 @@ on the server's local browser page, including operations that take no secrets.
 Set `BITBUCKET_CONFIRM_TOOLS` to a JSON array of exact tool names to require
 confirmation only for those tool calls, including read tools if desired. The
 entry `"*"` matches every tool; `["*"]` confirms both reads and writes.
-For example, `["run_pipeline","delete_variable","create_deployment"]` confirms
+If an existing tool allowlist names `create_deployment`, replace that entry
+with `manage_deployment`. Confirmation lists also accept the legacy
+`create_deployment` name for `manage_deployment`.
+For example, `["run_pipeline","delete_variable","manage_deployment"]` confirms
 those three tools. An unset variable or `[]` keeps the default: confirm every
 write, without confirmation for reads. Invalid arrays prevent startup. This
 setting is independent of `BITBUCKET_ALLOWED_TOOLS` and never grants access denied by an allowlist.

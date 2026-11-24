@@ -147,3 +147,29 @@ func TestGetUUIDRespectsLiveProjectPolicy(t *testing.T) {
 		}
 	}
 }
+
+func TestGetUserUUID(t *testing.T) {
+	const uuid = "{01234567-89AB-cdef-0123-456789abcdef}"
+	for user, path := range map[string]string{"me": "/2.0/user", "123:abc": "/2.0/users/123:abc"} {
+		cs := connectUUID(t, Policy{Repositories: []string{}, Projects: []string{}}, func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet || r.URL.Path != path || r.URL.Query().Get("fields") != "uuid" {
+				t.Errorf("unexpected user request: %s %s", r.Method, r.URL)
+			}
+			writeJSON(w, map[string]string{"uuid": uuid})
+		})
+		out := decodeResult[uuidResult](t, mustCall(t, cs, "get_uuid", map[string]any{"user": user}))
+		if out.UUID != uuid || out.ContentTrust != "untrusted" {
+			t.Fatalf("unexpected user result: %+v", out)
+		}
+	}
+	cs := connectUUID(t, Policy{}, func(http.ResponseWriter, *http.Request) {
+		t.Error("invalid user lookup reached Bitbucket")
+	})
+	for _, args := range []map[string]any{
+		{"user": "me", "repo": "repo-a"}, {"user": "me", "environment": "Preview"}, {"user": "../user"},
+	} {
+		if _, failed := call(t, cs, "get_uuid", args); !failed {
+			t.Errorf("accepted invalid arguments: %v", args)
+		}
+	}
+}

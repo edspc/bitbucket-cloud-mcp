@@ -37,7 +37,7 @@ segment, so a branch `feature/new` becomes `feature%2Fnew`.
 
 For example, subscribe to `bitbucket://pipeline-scopes/api/branch/main` or
 `bitbucket://pipeline-scopes/api/pullrequest/42`. Obtain the environment UUID
-from `get_uuid`, `create_deployment` or Bitbucket settings. Each resource needs `get_pipeline`
+from `get_uuid`, `manage_deployment` or Bitbucket settings. Each resource needs `get_pipeline`
 allowed by `BITBUCKET_ALLOWED_TOOLS` and the same repository/project access as a
 pipeline resource. PR statuses may include builds from providers other than
 Bitbucket Pipelines. A deployment outside the latest repository window is not

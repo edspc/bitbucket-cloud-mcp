@@ -62,14 +62,18 @@ func (t *tools) searchRepositories(ctx context.Context, _ *mcp.CallToolRequest, 
 		if !t.policy.allowsListed(r.Slug, r.Project.Key, r.Project.UUID) {
 			continue
 		}
-		v := repositoryView{
-			Slug: r.Slug, Name: r.Name, Project: r.Project.Key, ProjectName: r.Project.Name, Description: r.Description,
-			Language: r.Language, Private: r.IsPrivate, UpdatedOn: r.UpdatedOn, URL: t.bb.RepositoryURL(r.Slug),
-		}
-		if r.MainBranch != nil {
-			v.MainBranch = r.MainBranch.Name
-		}
-		result.Repositories = append(result.Repositories, v)
+		result.Repositories = append(result.Repositories, t.repositoryView(r))
 	}
 	return nil, result, nil
+}
+
+func (t *tools) repositoryView(r bitbucket.Repository) repositoryView {
+	v := repositoryView{
+		Slug: r.Slug, Name: r.Name, Project: r.Project.Key, ProjectName: r.Project.Name, Description: r.Description,
+		Language: r.Language, Private: r.IsPrivate, UpdatedOn: r.UpdatedOn, URL: t.bb.RepositoryURL(r.Slug),
+	}
+	if r.MainBranch != nil {
+		v.MainBranch = r.MainBranch.Name
+	}
+	return v
 }

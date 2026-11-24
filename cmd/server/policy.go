@@ -12,11 +12,19 @@ import (
 
 func policyFromEnv() (tools.Policy, error) {
 	var policy tools.Policy
-	if value, set := os.LookupEnv("BITBUCKET_ENABLE_API_PROXY"); set {
-		var err error
-		policy.APIProxyEnabled, err = strconv.ParseBool(value)
-		if err != nil {
-			return tools.Policy{}, fmt.Errorf("BITBUCKET_ENABLE_API_PROXY must be a boolean")
+	for _, field := range []struct {
+		name string
+		flag *bool
+	}{
+		{"BITBUCKET_ENABLE_API_PROXY", &policy.APIProxyEnabled},
+		{"BITBUCKET_READ_ONLY", &policy.ReadOnly},
+	} {
+		if value, set := os.LookupEnv(field.name); set {
+			var err error
+			*field.flag, err = strconv.ParseBool(value)
+			if err != nil {
+				return tools.Policy{}, fmt.Errorf("%s must be a boolean", field.name)
+			}
 		}
 	}
 	for _, field := range []struct {
