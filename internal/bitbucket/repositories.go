@@ -9,6 +9,7 @@ import (
 
 // Repository is a repository as the workspace listing shows it.
 type Repository struct {
+	UUID        string `json:"uuid"`
 	Slug        string `json:"slug"`
 	Name        string `json:"name"`
 	FullName    string `json:"full_name"`

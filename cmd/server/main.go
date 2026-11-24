@@ -31,13 +31,13 @@ func main() {
 		}
 		return
 	}
-	if err := run(context.Background(), log); err != nil {
+	if err := run(context.Background(), log, len(os.Args) == 2 && os.Args[1] == "--read-only"); err != nil {
 		log.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, log *slog.Logger) error {
+func run(ctx context.Context, log *slog.Logger, readOnly bool) error {
 	lookup, err := configurationLookup()
 	if err != nil {
 		return err
@@ -51,6 +51,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	policy.ReadOnly = policy.ReadOnly || readOnly
 	s := tools.NewServer(ctx, &mcp.Implementation{Name: "bitbucket-cloud-mcp", Version: version}, bb, log, policy)
 	log.Info("serving MCP over stdio", "workspace", cfg.Workspace)
 	return s.Run(ctx, &mcp.StdioTransport{})

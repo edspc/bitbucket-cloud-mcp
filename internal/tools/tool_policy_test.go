@@ -41,6 +41,10 @@ func TestRepositoryToolRules(t *testing.T) {
 		{"workspace search", []string{"*", "!search_code@repo-a"}, "search_code", map[string]any{"query": "test"}, false},
 		{"explicit repository search", []string{"*", "!search_code@repo-a"}, "search_code", map[string]any{"repo": "repo-b", "query": "test"}, true},
 		{"workspace variables", []string{"*", "!set_variable@repo-a"}, "set_variable", map[string]any{"scope": "workspace"}, false},
+		{"legacy deployment global deny", []string{"*", "!create_deployment"}, "manage_deployment", map[string]any{"repo": "repo-a", "create": true}, false},
+		{"legacy deployment scoped deny", []string{"*", "!create_deployment@repo-a"}, "manage_deployment", map[string]any{"repo": "repo-a", "create": true}, false},
+		{"legacy deployment scoped deny elsewhere", []string{"*", "!create_deployment@repo-a"}, "manage_deployment", map[string]any{"repo": "repo-b", "create": true}, true},
+		{"legacy deployment scoped allow", []string{"create_deployment@repo-a"}, "manage_deployment", map[string]any{"repo": "repo-a", "create": true}, true},
 		{"global calls unaffected", []string{"*", "!set_variable@repo-a"}, "list_variables", map[string]any{"scope": "workspace"}, true},
 	} {
 		t.Run(tc.label, func(t *testing.T) {

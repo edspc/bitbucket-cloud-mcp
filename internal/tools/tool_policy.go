@@ -17,6 +17,9 @@ func parseToolRule(entry string) (toolRule, error) {
 	if name == "" || name != "*" && strings.Trim(name, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != "" || scoped && !validRepositorySlug(repo) {
 		return toolRule{}, errors.New("expected tool, !tool, tool@repo or !tool@repo; only a complete * wildcard is supported")
 	}
+	if name == "create_deployment" {
+		name = "manage_deployment"
+	}
 	return toolRule{name: name, repo: repo, deny: deny}, nil
 }
 

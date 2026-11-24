@@ -103,4 +103,52 @@ func TestInstalledBinary(t *testing.T) {
 	if err = session.Close(); err != nil {
 		t.Fatalf("stdio shutdown: %v", err)
 	}
+	for _, mode := range []string{"flag", "env"} {
+		t.Run("read-only/"+mode, func(t *testing.T) {
+			cmd := exec.CommandContext(ctx, binary)
+			cmd.Env = append(append([]string{}, env...),
+				"BITBUCKET_WORKSPACE=offline-test", "BITBUCKET_EMAIL=test@example.invalid", "BITBUCKET_API_TOKEN=not-a-real-token",
+				"BITBUCKET_ENABLE_API_PROXY=true", `BITBUCKET_ALLOWED_TOOLS=["*"]`)
+			if mode == "flag" {
+				cmd.Args = append(cmd.Args, "--read-only")
+				cmd.Env = append(cmd.Env, "BITBUCKET_READ_ONLY=false")
+			} else {
+				cmd.Env = append(cmd.Env, "BITBUCKET_READ_ONLY=true")
+			}
+			session, err := client.Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = session.Close() })
+			list, err := session.ListTools(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := map[string]bool{}
+			for _, tool := range list.Tools {
+				if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
+					t.Errorf("non-read-only tool advertised: %s", tool.Name)
+				}
+				if (tool.Name == "get_repository" || tool.Name == "get_branch_restrictions") && (tool.InputSchema == nil || tool.OutputSchema == nil) {
+					t.Errorf("missing Code Mode discovery schema: %s", tool.Name)
+				}
+				found[tool.Name] = true
+			}
+			for _, name := range []string{"get_repository", "get_branch_restrictions"} {
+				if !found[name] {
+					t.Errorf("missing read tool: %s", name)
+				}
+			}
+			for _, name := range []string{"api_request", "manage_repository", "manage_deployment", "run_pipeline", "create_pull_request_comment"} {
+				if found[name] {
+					t.Errorf("write-capable tool advertised: %s", name)
+				}
+				result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: map[string]any{}})
+				if err == nil && (result == nil || !result.IsError) {
+					t.Errorf("write-capable tool callable: %s", name)
+				}
+			}
+		})
+	}
+
 }

@@ -7,7 +7,7 @@ import (
 
 func clearPolicyEnv(t *testing.T) {
 	t.Helper()
-	for _, name := range []string{"BITBUCKET_LOCAL_BROWSER", "BITBUCKET_ENABLE_API_PROXY", "BITBUCKET_ALLOWED_REPOS", "BITBUCKET_ALLOWED_PROJECTS", "BITBUCKET_ALLOWED_REFS", "BITBUCKET_ALLOWED_TOOLS", "BITBUCKET_CONFIRM_TOOLS"} {
+	for _, name := range []string{"BITBUCKET_LOCAL_BROWSER", "BITBUCKET_ENABLE_API_PROXY", "BITBUCKET_READ_ONLY", "BITBUCKET_ALLOWED_REPOS", "BITBUCKET_ALLOWED_PROJECTS", "BITBUCKET_ALLOWED_REFS", "BITBUCKET_ALLOWED_TOOLS", "BITBUCKET_CONFIRM_TOOLS"} {
 		t.Setenv(name, "")
 		if err := os.Unsetenv(name); err != nil {
 			t.Fatal(err)
@@ -131,5 +131,23 @@ func TestToolRulesConfiguration(t *testing.T) {
 				t.Fatal("malformed tool rule accepted from environment")
 			}
 		})
+	}
+}
+
+func TestReadOnlyEnvironment(t *testing.T) {
+	clearPolicyEnv(t)
+	for _, value := range []string{"true", "false", "invalid", ""} {
+		t.Setenv("BITBUCKET_READ_ONLY", value)
+		policy, err := policyFromEnv()
+		switch value {
+		case "true", "false":
+			if err != nil || policy.ReadOnly != (value == "true") {
+				t.Fatalf("%q: %+v, %v", value, policy, err)
+			}
+		default:
+			if err == nil {
+				t.Fatalf("accepted %q", value)
+			}
+		}
 	}
 }

@@ -22,6 +22,7 @@ func policyFromLookup(lookup func(string) (string, bool)) (tools.Policy, error) 
 	}{
 		{"BITBUCKET_ENABLE_API_PROXY", &policy.APIProxyEnabled},
 		{"BITBUCKET_LOCAL_BROWSER", &policy.LocalBrowser},
+		{"BITBUCKET_READ_ONLY", &policy.ReadOnly},
 	} {
 		if value, set := lookup(field.name); set {
 			var err error

@@ -17,6 +17,7 @@ import (
 // "*" for every tool. Ref limits apply to runs and schedules.
 type Policy struct {
 	LocalBrowser      bool // open local approval pages without client URL elicitation
+	ReadOnly          bool
 	APIProxyEnabled   bool // operator opt-in; never a tool argument
 	Repositories      []string
 	Projects          []string // exact project keys or UUIDs, checked by the client against live repository metadata
@@ -63,6 +64,9 @@ func (p Policy) checkRef(kind, name string) error {
 }
 
 func (p Policy) check(name string, in any) error {
+	if p.ReadOnly && isWriteTool(name) {
+		return errors.New("tool is disabled in read-only mode")
+	}
 	data, err := json.Marshal(in)
 	if err != nil {
 		return err
@@ -110,7 +114,18 @@ func guarded[In, Out any](t *tools, handler mcp.ToolHandlerFor[In, Out]) mcp.Too
 			var out Out
 			return nil, out, fmt.Errorf("%w; nothing changed", err)
 		}
-		if !isWriteTool(req.Params.Name) && t.policy.requiresConfirmation(req.Params.Name) {
+		write := isWriteTool(req.Params.Name)
+		if args, ok := any(in).(manageDeploymentInput); ok && !args.Create {
+			write = false
+		}
+		if args, ok := any(in).(manageRepositoryInput); ok {
+			write = args.hasSettings()
+			if args.BranchRestriction != nil {
+				action := args.BranchRestriction.Action
+				write = write || (action != "list" && action != "get")
+			}
+		}
+		if !write && len(t.policy.ConfirmationTools) > 0 && t.policy.requiresConfirmation(req.Params.Name) {
 			page, err := t.claimSecrets(req, in)
 			if err != nil {
 				var out Out
@@ -161,7 +176,8 @@ func guarded[In, Out any](t *tools, handler mcp.ToolHandlerFor[In, Out]) mcp.Too
 
 func (p Policy) requiresConfirmation(name string) bool {
 	if len(p.ConfirmationTools) > 0 {
-		return slices.Contains(p.ConfirmationTools, "*") || slices.Contains(p.ConfirmationTools, name)
+		return slices.Contains(p.ConfirmationTools, "*") || slices.Contains(p.ConfirmationTools, name) ||
+			name == "manage_deployment" && slices.Contains(p.ConfirmationTools, "create_deployment")
 	}
 	return isWriteTool(name)
 }
@@ -177,7 +193,7 @@ func (p Policy) requiresCallConfirmation(name string, in any) bool {
 
 func isWriteTool(name string) bool {
 	switch name {
-	case "api_request", "link_repos_by_key", "link_repos_by_token", "set_variable", "delete_variable", "run_pipeline", "stop_pipeline", "add_schedule", "delete_schedule", "create_deployment", "create_pull_request_comment":
+	case "api_request", "link_repos_by_key", "link_repos_by_token", "set_variable", "delete_variable", "run_pipeline", "stop_pipeline", "add_schedule", "delete_schedule", "manage_deployment", "manage_repository", "create_pull_request_comment":
 		return true
 	}
 	return false

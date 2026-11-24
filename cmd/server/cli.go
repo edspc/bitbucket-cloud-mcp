@@ -14,16 +14,18 @@ func commandLine(args []string, out io.Writer) (bool, error) {
 		return false, nil
 	}
 	if len(args) != 1 {
-		return true, errors.New("expected no arguments, --help or --version")
+		return true, errors.New("expected no arguments, configure, --read-only, --help or --version")
 	}
 	var err error
 	switch args[0] {
+	case "--read-only":
+		return false, nil
 	case "--version":
 		_, err = fmt.Fprintf(out, "bitbucket-cloud-mcp %s\n", version)
 	case "--help", "-h":
-		_, err = io.WriteString(out, `Usage: bitbucket-cloud-mcp [configure | --help | --version]
+		_, err = io.WriteString(out, `Usage: bitbucket-cloud-mcp [configure | --read-only | --help | --version]
 
-Run without arguments to serve MCP over stdin/stdout.
+Run without arguments or with --read-only to serve MCP over stdin/stdout.
 The MCP client starts this process; no background service is needed.
 
 configure edits one saved setting or runs full setup, saving to macOS Keychain.
@@ -51,6 +53,9 @@ Optional browser confirmation (JSON array; unset or [] confirms every write):
 Optional local browser (disabled by default):
   BITBUCKET_LOCAL_BROWSER   Set true to open approval pages in the system browser
   Use with local desktop clients that cannot open MCP URL elicitation.
+
+Optional read-only mode:
+  --read-only or BITBUCKET_READ_ONLY=true registers only read-only tools.
 
 Optional API proxy (disabled by default):
   BITBUCKET_ENABLE_API_PROXY   Set true to register api_request
