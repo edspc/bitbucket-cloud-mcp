@@ -41,8 +41,10 @@ the scopes required by the requested endpoint.
 | Create, update or delete webhooks | `read:repository:bitbucket` and `read:webhook:bitbucket`. Add `write:webhook:bitbucket` for create or update and `delete:webhook:bitbucket` for delete |
 
 Project restrictions also require repository read access for live membership
-checks. Some webhook events require additional scopes. Bitbucket's pull request
-read scope includes posting comments. See [Atlassian's API token permissions](https://support.atlassian.com/bitbucket-cloud/docs/api-token-permissions/).
+checks. Batch repository calls use repository read access to verify each
+target before applying any actions. Some webhook events require additional
+scopes. Bitbucket's pull request read scope includes posting comments.
+See [Atlassian's API token permissions](https://support.atlassian.com/bitbucket-cloud/docs/api-token-permissions/).
 
 ## Read-only mode
 

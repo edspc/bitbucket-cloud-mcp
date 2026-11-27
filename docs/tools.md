@@ -198,6 +198,62 @@ the resulting URL. Both the current repository and its destination must
 satisfy server access policy.
 A rename also requires the same repository-specific tool rules on both slugs.
 
+### Batch operations
+
+In `manage_repository`, use `repos` to select several repositories or `repo`
+to select one. Use `actions` to supply several operations. An action contains
+repository settings, one `branch_restriction` or one `webhook`. An empty action
+reads repository settings. Without `actions`, the top-level operation applies
+to each repository. Existing calls with `repo` and a top-level operation keep
+their single result.
+
+The server visits repositories in the given order and executes all actions in
+order for each one. A call can contain up to 100 repository/action combinations.
+Put a slug or project change last. A rename can target one repository only.
+Rule IDs and webhook UUIDs refer to objects in each selected repository. Use
+separate calls for different IDs, and change each existing rule or hook once
+per batch.
+
+Add two restrictions to one repository.
+
+```json
+{
+  "repo": "api",
+  "actions": [
+    {"branch_restriction":{"action":"create","rule":{"kind":"force","pattern":"main"}}},
+    {"branch_restriction":{"action":"create","rule":{"kind":"delete","pattern":"main"}}}
+  ]
+}
+```
+
+Create the same webhook in two repositories.
+
+```json
+{
+  "repos": ["api", "worker"],
+  "webhook": {
+    "action": "create",
+    "settings": {"url":"https://example.com/webhook","description":"CI events","active":true,"events":["repo:push"]}
+  }
+}
+```
+
+The server checks every target before writing and asks for one browser approval
+by default. Split batches whose approval details exceed 512 KiB.
+`set_secret: true` adds a browser field for that webhook action,
+shared across the repositories in the call. Separate actions have separate fields.
+Batch preflight requires `read:repository:bitbucket` in addition to the scopes
+required by each action.
+
+The batch result includes an overall `status` of `completed`, `partial` or
+`failed`. Each entry in `results` has the repository, one-based action index
+and its status. Bitbucket processes separate requests. The server stops on
+the first failure and reports `completed`, `failed` or `skipped` for each action.
+Earlier successful changes stay applied. Check the failed action's outcome
+before retrying if Bitbucket may already have accepted the write.
+Result bodies share a 256 KiB limit. `result_omitted` means the action's status
+is available and its body exceeded the remaining budget.
+
 ### Repository webhooks
 
 Use `get_repository` with `{"repo":"my-repo","webhook":{}}` to list webhooks.
@@ -207,8 +263,8 @@ description, destination origin and whether a signing secret is set. The
 destination shows the scheme, host and any explicit port.
 
 Use `manage_repository` with `webhook.action` set to `list`, `get`,
-`create`, `update` or `delete`. Make a separate call for repository
-settings or branch restrictions. For creation, provide `settings` containing
+`create`, `update` or `delete`. In a batch, put a webhook operation in its own
+action. For creation, provide `settings` containing
 `url`, `description`, `active` and a nonempty `events` array. Use
 `uuid` for get, update and delete. Updates send only supplied fields,
 including `active: false` and empty descriptions. Keep credentials out of
@@ -232,8 +288,8 @@ for delivery history.
 result includes `pipelines_source_branches` when Bitbucket returns it.
 
 Use `manage_repository` with `repo` and `branch_restriction` to manage
-repository-level Git branch restrictions. Make a separate call for a
-repository settings update.
+repository-level Git branch restrictions. In a batch, put each rule operation
+in its own action.
 
 - `list` returns a page of rules, including IDs.
 - `get` returns the rule with the supplied `id`.

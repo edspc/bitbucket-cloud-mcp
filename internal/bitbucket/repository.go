@@ -15,6 +15,12 @@ func ValidRepositorySlug(slug string) bool {
 		strings.Trim(slug, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") == ""
 }
 
+// ValidRepositoryUUID checks that id can pin a request to one repository.
+func ValidRepositoryUUID(id string) bool {
+	matched, _ := regexp.MatchString(`^\{[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\}$`, id)
+	return matched
+}
+
 func (c *Client) RepositoryUUID(ctx context.Context, repo string) (string, error) {
 	var metadata struct {
 		UUID string `json:"uuid"`
@@ -56,21 +62,38 @@ func (c *Client) RepositoryProject(ctx context.Context, key string) (RepositoryP
 	return out, err
 }
 
-// checkRepositoryIdentity reauthorizes the slug and ensures it still names the
-// repository and project that were presented for approval.
-func (c *Client) checkRepositoryIdentity(ctx context.Context, repo string, before Repository) error {
-	matched, err := regexp.MatchString(`^\{[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\}$`, before.UUID)
-	if err != nil || !matched {
-		return errors.New("bitbucket returned no usable repository UUID")
+// CheckedRepositorySettings returns settings only for the expected repository and project.
+func (c *Client) CheckedRepositorySettings(ctx context.Context, repo string, before Repository) (Repository, error) {
+	if !ValidRepositoryUUID(before.UUID) {
+		return Repository{}, errors.New("bitbucket returned no usable repository UUID")
 	}
 	current, err := c.RepositorySettings(ctx, repo)
 	if err != nil {
-		return err
+		return Repository{}, err
 	}
 	if current.UUID != before.UUID || current.Project.Key != before.Project.Key || current.Project.UUID != before.Project.UUID {
-		return errors.New("repository identity or project changed; call the tool again")
+		return Repository{}, errors.New("repository identity or project changed; call the tool again")
 	}
-	return ctx.Err()
+	return current, ctx.Err()
+}
+
+func (c *Client) checkRepositoryIdentity(ctx context.Context, repo string, before Repository) error {
+	_, err := c.CheckedRepositorySettings(ctx, repo, before)
+	return err
+}
+
+func (c *Client) repositoryReadURL(ctx context.Context, repo string, before *Repository, parts ...string) (string, error) {
+	if before != nil {
+		if err := c.checkRepositoryIdentity(ctx, repo, *before); err != nil {
+			return "", err
+		}
+		return APIURL + c.repoPath(before.UUID, parts...), nil
+	}
+	target := APIURL + c.repoPath(repo, parts...)
+	if err := c.checkProjectURL(ctx, target); err != nil {
+		return "", err
+	}
+	return target, ctx.Err()
 }
 
 func repositoryCheckContext(ctx context.Context) (context.Context, context.CancelFunc) {

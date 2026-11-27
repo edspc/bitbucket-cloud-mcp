@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	// maxSecretForm caps the size of the submitted form; tokens and secrets are a few KB at most.
+	// maxSecretForm is the default limit for a submitted approval form.
 	maxSecretForm = 64 << 10
 	// pageLinger keeps a page's port after it closes, for the reload of a tab left open.
 	pageLinger = time.Minute
@@ -40,17 +40,18 @@ type secretPage struct {
 
 // secretPageInfo is what the page tells the user and asks for.
 type secretPageInfo struct {
-	Tool       string     // MCP name of the tool that asks; set by askSecrets
-	Title      string     // its human title
-	Need       string     // what the user has to do now
-	Outcome    string     // what happens with the values
-	Token      *tokenHelp // set when the user first creates an access token
-	Fields     []secretField
-	Until      time.Time // when the page closes; set by askSecrets
-	Workspace  string
-	Arguments  string // complete non-secret arguments, rendered as escaped JSON
-	Commit     string // pinned pipeline SHA, retained on the server for the approved run
-	webhookURL string // raw destination retained only on the server to bind webhook approval
+	Tool          string     // MCP name of the tool that asks; set by askSecrets
+	Title         string     // its human title
+	Need          string     // what the user has to do now
+	Outcome       string     // what happens with the values
+	Token         *tokenHelp // set when the user first creates an access token
+	Fields        []secretField
+	Until         time.Time // when the page closes; set by askSecrets
+	Workspace     string
+	Arguments     string   // complete non-secret arguments, rendered as escaped JSON
+	Commit        string   // pinned pipeline SHA, retained on the server for the approved run
+	webhookURLs   []string // raw destinations retained only on the server to bind webhook approvals
+	formSizeLimit int64    // larger bound for pages collecting many webhook signing secrets
 }
 
 // tokenHelp tells the user where and how to create the access token to paste.
@@ -132,7 +133,7 @@ func (p *secretPage) sameTab(r *http.Request) bool {
 // receive takes the submitted values. It answers with a redirect to the page, which then shows
 // that they arrived: reloading that tab sends nothing again.
 func (p *secretPage) receive(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxSecretForm)
+	r.Body = http.MaxBytesReader(w, r.Body, max(maxSecretForm, p.info.formSizeLimit))
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return

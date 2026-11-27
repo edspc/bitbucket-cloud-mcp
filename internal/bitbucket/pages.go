@@ -36,13 +36,12 @@ func readPage[T any](ctx context.Context, c *Client, rawURL string, limit int) (
 	if err := c.checkProjectURL(ctx, rawURL); err != nil {
 		return apiPage[T]{}, err
 	}
-	return readWorkspacePage[T](ctx, c, rawURL, limit)
+	return readPageUnchecked[T](ctx, c, rawURL, limit)
 }
 
-// readWorkspacePage reads a page of a workspace-wide listing without the project check, which
-// needs one repository in the URL: the caller must narrow the request and keep only the values
-// the server policy allows.
-func readWorkspacePage[T any](ctx context.Context, c *Client, rawURL string, limit int) (apiPage[T], error) {
+// readPageUnchecked skips the project check. The caller must authorize the target
+// or filter a workspace-wide listing to the repositories the policy allows.
+func readPageUnchecked[T any](ctx context.Context, c *Client, rawURL string, limit int) (apiPage[T], error) {
 	var page apiPage[T]
 	if !inAPI(rawURL) {
 		return page, fmt.Errorf("unexpected pagination link outside the Bitbucket API")

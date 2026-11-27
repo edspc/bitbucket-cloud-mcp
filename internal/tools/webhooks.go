@@ -2,15 +2,14 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/url"
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/edspc/bitbucket-cloud-mcp/internal/bitbucket"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type webhookReadInput struct {
@@ -41,8 +40,8 @@ func webhookView(hook bitbucket.Webhook) bitbucket.Webhook {
 	return hook
 }
 
-func (t *tools) readWebhooks(ctx context.Context, repo string, in webhookReadInput) (manageRepositoryResult, error) {
-	out := manageRepositoryResult{ContentTrust: "untrusted"}
+func (t *tools) readWebhooks(ctx context.Context, repo string, in webhookReadInput, before *bitbucket.Repository) (repositoryActionResult, error) {
+	out := repositoryActionResult{ContentTrust: "untrusted"}
 	if in.UUID != "" {
 		if in.Page != 0 || in.Limit != 0 {
 			return out, errors.New("page and limit apply only to webhook listing")
@@ -51,7 +50,7 @@ func (t *tools) readWebhooks(ctx context.Context, repo string, in webhookReadInp
 		if err != nil {
 			return out, err
 		}
-		hook, err := t.bb.Webhook(ctx, repo, id)
+		hook, err := t.bb.Webhook(ctx, repo, id, before)
 		if err != nil {
 			return out, err
 		}
@@ -59,15 +58,11 @@ func (t *tools) readWebhooks(ctx context.Context, repo string, in webhookReadInp
 		out.Webhook = &view
 		return out, nil
 	}
-	page, err := optionalPage(in.Page)
+	page, limit, err := repositoryListPage(in.Page, in.Limit)
 	if err != nil {
 		return out, err
 	}
-	limit, err := optionalCount("limit", in.Limit, defaultListLimit, maxListLimit)
-	if err != nil {
-		return out, err
-	}
-	hooks, err := t.bb.ListWebhooks(ctx, repo, page, limit)
+	hooks, err := t.bb.ListWebhooks(ctx, repo, page, limit, before)
 	if err != nil {
 		return out, err
 	}
@@ -77,6 +72,31 @@ func (t *tools) readWebhooks(ctx context.Context, repo string, in webhookReadInp
 	}
 	out.Webhooks, out.NextPage, out.Total = &views, nextPage(page, hooks.More), hooks.Total
 	return out, nil
+}
+
+func (in webhookInput) validate() error {
+	if in.Action == "list" || in.Action == "get" {
+		if in.Settings != nil || in.SetSecret || in.RemoveSecret || (in.Action == "get") != (in.UUID != "") {
+			return errors.New("get requires a uuid, list omits it, and neither accepts changes")
+		}
+		if in.Action == "get" {
+			if in.Page != 0 || in.Limit != 0 {
+				return errors.New("page and limit apply only to webhook listing")
+			}
+			_, err := webhookUUID(in.UUID)
+			return err
+		}
+		_, _, err := repositoryListPage(in.Page, in.Limit)
+		return err
+	}
+	if _, err := in.writeFields(); err != nil {
+		return err
+	}
+	if in.Action != "create" {
+		_, err := webhookUUID(in.UUID)
+		return err
+	}
+	return nil
 }
 
 func (in webhookInput) writeFields() (*bitbucket.WebhookWrite, error) {
@@ -131,112 +151,52 @@ func (in webhookInput) writeFields() (*bitbucket.WebhookWrite, error) {
 	return &fields, nil
 }
 
-func (t *tools) manageWebhook(ctx context.Context, req *mcp.CallToolRequest, in manageRepositoryInput) (*mcp.CallToolResult, manageRepositoryResult, error) {
-	args := *in.Webhook
-	out := manageRepositoryResult{ContentTrust: "untrusted"}
-	if args.Action == "list" || args.Action == "get" {
-		if args.Settings != nil || args.SetSecret || args.RemoveSecret || (args.Action == "get") != (args.UUID != "") {
-			return nil, out, errors.New("get requires a uuid, list omits it, and neither accepts changes")
-		}
-		out, err := t.readWebhooks(ctx, in.Repo, args.webhookReadInput)
-		return nil, out, err
-	}
-	page, err := t.claimSecrets(req, in)
-	if err != nil {
-		return nil, out, err
-	}
-	defer page.close()
+func (t *tools) planWebhook(ctx context.Context, repo string, beforeRepo bitbucket.Repository, args webhookInput) (repositoryOperation, error) {
 	write, err := args.writeFields()
 	if err != nil {
-		return nil, out, err
+		return repositoryOperation{}, err
 	}
 	var id string
+	var current *bitbucket.Webhook
+	operation := repositoryOperation{}
 	if args.Action != "create" {
 		id, err = webhookUUID(args.UUID)
 		if err != nil {
-			return nil, out, err
+			return repositoryOperation{}, err
 		}
-	}
-	repo, err := t.bb.RepositorySettings(ctx, in.Repo)
-	if err != nil {
-		return nil, out, err
-	}
-	var current *bitbucket.Webhook
-	var displayed *bitbucket.Webhook
-	if id != "" {
-		hook, err := t.bb.Webhook(ctx, in.Repo, id)
+		hook, err := t.bb.Webhook(ctx, repo, id, nil)
 		if err != nil {
-			return nil, out, err
+			return repositoryOperation{}, err
 		}
 		current = &hook
 		view := webhookView(hook)
-		displayed = &view
+		operation.approval.CurrentWebhook = &view
+		operation.hiddenURL = hook.URL
 	}
-	details := struct {
-		manageRepositoryInput
-		RepositoryUUID string             `json:"repository_uuid"`
-		Current        *bitbucket.Webhook `json:"current_webhook,omitempty"`
-	}{in, repo.UUID, displayed}
-	var currentURL string
-	if current != nil {
-		currentURL = current.URL
-	}
-	data, err := json.MarshalIndent(details, "", "  ")
-	if err != nil {
-		return nil, out, err
-	}
-	if page == nil {
-		info := secretPageInfo{
-			Title: "Manage a webhook", Need: "Review the webhook and the requested change.",
-			Outcome:   "Confirmation applies the displayed webhook change.",
-			Arguments: string(data), webhookURL: currentURL,
+	operation.apply = func(ctx context.Context, until time.Time, signingSecret string) (repositoryActionResult, error) {
+		if current != nil {
+			checkCtx, cancel := context.WithDeadline(ctx, until)
+			defer cancel()
+			hook, err := t.bb.Webhook(checkCtx, repo, id, nil)
+			if err != nil {
+				return repositoryActionResult{}, err
+			}
+			if !reflect.DeepEqual(*current, hook) {
+				return repositoryActionResult{}, errors.New("webhook changed while awaiting approval; call the tool again")
+			}
 		}
 		if args.SetSecret {
-			info.Fields = []secretField{{Name: "secret", Label: "Signing secret"}}
+			write.Secret = &signingSecret
 		}
-		res, err := t.askSecrets(ctx, req, in, info)
-		return res, out, err
-	}
-	if !page.automatic && (page.page.info.Arguments != string(data) || page.page.info.webhookURL != currentURL) {
-		return nil, out, errors.New("webhook changed while awaiting approval; call the tool again")
-	}
-	if !accepted(req, page) {
-		return nil, out, errors.New("webhook change was not approved")
-	}
-	values, err := t.waitSecrets(ctx, req, page)
-	if err != nil {
-		return nil, out, err
-	}
-	if args.SetSecret {
-		secret := values["secret"]
-		if secret == "" || len([]rune(secret)) > 128 {
-			return nil, out, errors.New("webhook signing secret must contain 1 to 128 characters")
-		}
-		write.Secret = &secret
-	}
-	if current != nil {
-		checkCtx, cancel := context.WithDeadline(ctx, page.page.info.Until)
-		defer cancel()
-		hook, err := t.bb.Webhook(checkCtx, in.Repo, id)
+		hook, err := t.bb.WriteWebhook(bitbucket.WithWriteDeadline(ctx, until), repo, beforeRepo, id, write)
 		if err != nil {
-			return nil, out, err
+			return repositoryActionResult{}, err
 		}
-		if !reflect.DeepEqual(*current, hook) {
-			return nil, out, errors.New("webhook changed while awaiting approval; call the tool again")
+		if write == nil {
+			return repositoryActionResult{ContentTrust: "untrusted", DeletedWebhookUUID: id}, nil
 		}
-	}
-	if err = approvalLive(page); err != nil {
-		return nil, out, err
-	}
-	hook, err := t.bb.WriteWebhook(bitbucket.WithWriteDeadline(ctx, page.page.info.Until), in.Repo, repo, id, write)
-	if err != nil {
-		return nil, out, err
-	}
-	if write == nil {
-		out.DeletedWebhookUUID = id
-	} else {
 		view := webhookView(hook)
-		out.Webhook = &view
+		return repositoryActionResult{ContentTrust: "untrusted", Webhook: &view}, nil
 	}
-	return nil, out, nil
+	return operation, nil
 }

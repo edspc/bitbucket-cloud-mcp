@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/edspc/bitbucket-cloud-mcp/internal/bitbucket"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -27,7 +28,8 @@ func (in branchRestrictionInput) validate() error {
 	switch in.Action {
 	case "list":
 		if in.ID == 0 && in.Rule == nil {
-			return nil
+			_, _, err := repositoryListPage(in.Page, in.Limit)
+			return err
 		}
 	case "get", "delete":
 		if in.ID > 0 && in.Rule == nil {
@@ -35,7 +37,8 @@ func (in branchRestrictionInput) validate() error {
 		}
 	case "create":
 		if in.ID == 0 && in.Rule != nil {
-			return nil
+			_, err := in.fieldsForWrite(nil)
+			return err
 		}
 	case "update":
 		if in.ID > 0 && in.Rule != nil && *in.Rule != (bitbucket.BranchRuleFields{}) {
@@ -74,162 +77,153 @@ type getBranchRestrictionsInput struct {
 	Limit int    `json:"limit,omitempty" jsonschema:"list page size, 10 by default and at most 50"`
 }
 
-func (t *tools) getBranchRestrictions(ctx context.Context, req *mcp.CallToolRequest, in getBranchRestrictionsInput) (*mcp.CallToolResult, manageRepositoryResult, error) {
+func (t *tools) getBranchRestrictions(ctx context.Context, _ *mcp.CallToolRequest, in getBranchRestrictionsInput) (*mcp.CallToolResult, repositoryActionResult, error) {
 	if err := t.policy.checkRepo(in.Repo); err != nil {
-		return nil, manageRepositoryResult{}, err
+		return nil, repositoryActionResult{}, err
 	}
 	action := "list"
 	if in.ID != 0 {
 		action = "get"
 	}
-	return t.manageBranchRestriction(ctx, req, manageRepositoryInput{
-		Repo: in.Repo, BranchRestriction: &branchRestrictionInput{Action: action, ID: in.ID, Page: in.Page, Limit: in.Limit},
-	})
+	args := branchRestrictionInput{Action: action, ID: in.ID, Page: in.Page, Limit: in.Limit}
+	if err := args.validate(); err != nil {
+		return nil, repositoryActionResult{}, err
+	}
+	out, err := t.readBranchRestriction(ctx, in.Repo, args, nil)
+	return nil, out, err
 }
 
-func (t *tools) manageBranchRestriction(ctx context.Context, req *mcp.CallToolRequest, in manageRepositoryInput) (*mcp.CallToolResult, manageRepositoryResult, error) {
-	args := *in.BranchRestriction
-	out := manageRepositoryResult{ContentTrust: "untrusted"}
-	if err := args.validate(); err != nil {
-		return nil, out, err
-	}
-	switch args.Action {
-	case "list":
-		page, err := optionalPage(args.Page)
-		if err != nil {
-			return nil, out, err
+func (t *tools) readBranchRestriction(ctx context.Context, repo string, args branchRestrictionInput, before *bitbucket.Repository) (repositoryActionResult, error) {
+	out := repositoryActionResult{ContentTrust: "untrusted"}
+	if args.Action == "get" {
+		var rule bitbucket.BranchRule
+		var err error
+		if before == nil {
+			rule, err = t.bb.BranchRule(ctx, repo, args.ID)
+		} else {
+			rule, err = t.bb.PinnedBranchRule(ctx, repo, *before, args.ID)
 		}
-		limit, err := optionalCount("limit", args.Limit, defaultListLimit, maxListLimit)
-		if err != nil {
-			return nil, out, err
-		}
-		rules, err := t.bb.ListBranchRules(ctx, in.Repo, page, limit)
-		if rules.Values == nil {
-			rules.Values = []bitbucket.BranchRule{}
-		}
-		out.BranchRestrictions = &rules.Values
-		out.NextPage, out.Total = nextPage(page, rules.More), rules.Total
-		return nil, out, err
-	case "get":
-		rule, err := t.bb.BranchRule(ctx, in.Repo, args.ID)
 		out.BranchRestriction = &rule
-		return nil, out, err
+		return out, err
 	}
+	page, limit, err := repositoryListPage(args.Page, args.Limit)
+	if err != nil {
+		return out, err
+	}
+	rules, err := t.bb.ListBranchRules(ctx, repo, page, limit, before)
+	if rules.Values == nil {
+		rules.Values = []bitbucket.BranchRule{}
+	}
+	out.BranchRestrictions = &rules.Values
+	out.NextPage, out.Total = nextPage(page, rules.More), rules.Total
+	return out, err
+}
 
-	page, err := t.claimSecrets(req, in)
-	if err != nil {
-		return nil, out, err
+func (in branchRestrictionInput) fieldsForWrite(before *bitbucket.BranchRule) (bitbucket.BranchRuleFields, error) {
+	if in.Rule == nil {
+		return bitbucket.BranchRuleFields{}, nil
 	}
-	defer page.close()
-	beforeRepo, err := t.bb.RepositorySettings(ctx, in.Repo)
-	if err != nil {
-		return nil, out, err
+	fields := *in.Rule
+	if before != nil {
+		return fields, validateBranchRule(fields, before.Kind)
 	}
+	if fields.Kind == "" {
+		return fields, errors.New("kind is required to create a branch restriction")
+	}
+	if fields.BranchMatchKind == "" {
+		fields.BranchMatchKind = "glob"
+	}
+	switch fields.BranchMatchKind {
+	case "glob":
+		if fields.Pattern == nil || strings.TrimSpace(*fields.Pattern) == "" || fields.BranchType != "" {
+			return fields, errors.New("glob rules require a nonempty pattern and no branch_type")
+		}
+	case "branching_model":
+		if fields.BranchType == "" || fields.Pattern != nil && *fields.Pattern != "" {
+			return fields, errors.New("branching_model rules require branch_type and an empty pattern")
+		}
+		if fields.Pattern == nil {
+			empty := ""
+			fields.Pattern = &empty
+		}
+	default:
+		return fields, errors.New("branch_match_kind must be glob or branching_model")
+	}
+	if (fields.Kind == "push" || fields.Kind == "restrict_merges") && (fields.Users == nil || fields.Groups == nil) {
+		return fields, errors.New("creating push or restrict_merges requires explicit users and groups arrays; empty arrays grant no user or group exceptions")
+	}
+	return fields, validateBranchRule(fields, "")
+}
+
+func (t *tools) planBranchRestriction(ctx context.Context, repo string, beforeRepo bitbucket.Repository, args branchRestrictionInput) (repositoryOperation, error) {
 	var before *bitbucket.BranchRule
-	var fields bitbucket.BranchRuleFields
 	if args.ID > 0 {
-		rule, err := t.bb.BranchRule(ctx, in.Repo, args.ID)
+		rule, err := t.bb.BranchRule(ctx, repo, args.ID)
 		if err != nil {
-			return nil, out, err
+			return repositoryOperation{}, err
 		}
 		before = &rule
 	}
-	if args.Rule != nil {
-		fields = *args.Rule
-		kind := ""
-		if before != nil {
-			kind = before.Kind
-		} else {
-			if fields.Kind == "" {
-				return nil, out, errors.New("kind is required to create a branch restriction")
-			}
-			if fields.BranchMatchKind == "" {
-				fields.BranchMatchKind = "glob"
-			}
-			switch fields.BranchMatchKind {
-			case "glob":
-				if fields.Pattern == nil || strings.TrimSpace(*fields.Pattern) == "" || fields.BranchType != "" {
-					return nil, out, errors.New("glob rules require a nonempty pattern and no branch_type")
+	fields, err := args.fieldsForWrite(before)
+	if err != nil {
+		return repositoryOperation{}, err
+	}
+	return repositoryOperation{
+		approval: repositoryActionApproval{CurrentRule: before},
+		apply: func(ctx context.Context, until time.Time, _ string) (repositoryActionResult, error) {
+			writeCtx := bitbucket.WithWriteDeadline(ctx, until)
+			if before != nil {
+				checkCtx, cancel := context.WithDeadline(writeCtx, until)
+				defer cancel()
+				current, err := t.bb.PinnedBranchRule(checkCtx, repo, beforeRepo, args.ID)
+				if err != nil {
+					return repositoryActionResult{}, err
 				}
-			case "branching_model":
-				if fields.BranchType == "" || (fields.Pattern != nil && *fields.Pattern != "") {
-					return nil, out, errors.New("branching_model rules require branch_type and an empty pattern")
+				if !reflect.DeepEqual(current, *before) {
+					return repositoryActionResult{}, errors.New("branch restriction changed; call the tool again")
 				}
-				if fields.Pattern == nil {
-					empty := ""
-					fields.Pattern = &empty
-				}
-			default:
-				return nil, out, errors.New("branch_match_kind must be glob or branching_model")
 			}
-			if (fields.Kind == "push" || fields.Kind == "restrict_merges") && (fields.Users == nil || fields.Groups == nil) {
-				return nil, out, errors.New("creating push or restrict_merges requires explicit users and groups arrays; empty arrays grant no user or group exceptions")
-			}
-		}
-		if err = validateBranchRule(fields, kind); err != nil {
-			return nil, out, err
-		}
-	}
-	details := struct {
-		manageRepositoryInput
-		RepositoryUUID string                `json:"repository_uuid"`
-		CurrentRule    *bitbucket.BranchRule `json:"current_rule,omitempty"`
-	}{in, beforeRepo.UUID, before}
-	res, approved, err := t.confirmChange(ctx, req, in, page, details)
-	if err != nil || res != nil {
-		return res, out, err
-	}
-	if !approved {
-		return nil, out, errors.New("branch restriction change was not approved")
-	}
-	checkCtx, cancel := context.WithDeadline(ctx, page.page.info.Until)
-	defer cancel()
-	if before != nil {
-		current, err := t.bb.PinnedBranchRule(checkCtx, in.Repo, beforeRepo, args.ID)
-		if err != nil {
-			return nil, out, err
-		}
-		if !reflect.DeepEqual(current, *before) {
-			return nil, out, errors.New("branch restriction changed; call the tool again")
-		}
-	}
-	if err = approvalLive(page); err != nil {
-		return nil, out, err
-	}
-	writeCtx := bitbucket.WithWriteDeadline(ctx, page.page.info.Until)
+			return t.writeBranchRestriction(ctx, writeCtx, repo, beforeRepo, args, fields)
+		},
+	}, nil
+}
+
+func (t *tools) writeBranchRestriction(ctx, writeCtx context.Context, repo string, beforeRepo bitbucket.Repository, args branchRestrictionInput, fields bitbucket.BranchRuleFields) (repositoryActionResult, error) {
+	out := repositoryActionResult{}
 	var rule bitbucket.BranchRule
+	var err error
 	switch args.Action {
 	case "create":
-		rule, err = t.bb.CreateBranchRule(writeCtx, in.Repo, beforeRepo, fields)
+		rule, err = t.bb.CreateBranchRule(writeCtx, repo, beforeRepo, fields)
 	case "update":
-		rule, err = t.bb.UpdateBranchRule(writeCtx, in.Repo, beforeRepo, args.ID, fields)
+		rule, err = t.bb.UpdateBranchRule(writeCtx, repo, beforeRepo, args.ID, fields)
 	case "delete":
-		if err = t.bb.DeleteBranchRule(writeCtx, in.Repo, beforeRepo, args.ID); err != nil {
-			return nil, out, err
+		if err = t.bb.DeleteBranchRule(writeCtx, repo, beforeRepo, args.ID); err != nil {
+			return out, err
 		}
-		out.DeletedBranchRestrictionID = args.ID
-		return nil, out, nil
+		return repositoryActionResult{ContentTrust: "untrusted", DeletedBranchRestrictionID: args.ID}, nil
 	}
 	if err != nil {
-		return nil, out, err
+		return out, err
 	}
-	if fields.PipelinesSourceBranches != nil {
-		saved, err := t.bb.PinnedBranchRule(ctx, in.Repo, beforeRepo, rule.ID)
-		if err != nil {
-			return nil, out, fmt.Errorf("branch rule %d was written but pipeline source branches could not be verified: %w", rule.ID, err)
-		}
-		want := slices.Clone(*fields.PipelinesSourceBranches)
-		if saved.PipelinesSourceBranches == nil {
-			return nil, out, fmt.Errorf("branch rule %d was written but Bitbucket omitted pipeline source branches; the requested change could not be verified", rule.ID)
-		}
-		got := slices.Clone(*saved.PipelinesSourceBranches)
-		slices.Sort(want)
-		slices.Sort(got)
-		if !slices.Equal(got, want) {
-			return nil, out, fmt.Errorf("branch rule %d was written but Bitbucket did not return the requested pipeline source branches", rule.ID)
-		}
-		rule = saved
+	out.ContentTrust, out.BranchRestriction = "untrusted", &rule
+	if fields.PipelinesSourceBranches == nil {
+		return out, nil
 	}
-	out.BranchRestriction = &rule
-	return nil, out, nil
+	saved, err := t.bb.PinnedBranchRule(ctx, repo, beforeRepo, rule.ID)
+	if err != nil {
+		return out, fmt.Errorf("branch rule %d was written but pipeline source branches could not be verified: %w", rule.ID, err)
+	}
+	want := slices.Clone(*fields.PipelinesSourceBranches)
+	if saved.PipelinesSourceBranches == nil {
+		return out, fmt.Errorf("branch rule %d was written but Bitbucket omitted pipeline source branches; the requested change could not be verified", rule.ID)
+	}
+	got := slices.Clone(*saved.PipelinesSourceBranches)
+	slices.Sort(want)
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		return out, fmt.Errorf("branch rule %d was written but Bitbucket did not return the requested pipeline source branches", rule.ID)
+	}
+	out.BranchRestriction = &saved
+	return out, nil
 }

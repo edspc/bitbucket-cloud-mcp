@@ -68,23 +68,26 @@ func (p Policy) check(name string, in any) error {
 		return err
 	}
 	var args struct {
-		Repo   string `json:"repo"`
-		Source string `json:"source_repo"`
-		Target string `json:"target_repo"`
-		Scope  string `json:"scope"`
-		Branch string `json:"branch"`
-		Tag    string `json:"tag"`
+		Repo   string   `json:"repo"`
+		Repos  []string `json:"repos"`
+		Source string   `json:"source_repo"`
+		Target string   `json:"target_repo"`
+		Scope  string   `json:"scope"`
+		Branch string   `json:"branch"`
+		Tag    string   `json:"tag"`
 	}
 	if err = json.Unmarshal(data, &args); err != nil {
 		return err
 	}
-	var repos []string
+	repos := args.Repos
 	for _, repo := range []string{args.Repo, args.Source, args.Target} {
 		if repo != "" {
 			repos = append(repos, repo)
-			if err = p.checkRepo(repo); err != nil {
-				return err
-			}
+		}
+	}
+	for _, repo := range repos {
+		if err = p.checkRepo(repo); err != nil {
+			return err
 		}
 	}
 	if err = p.checkTool(name, repos); err != nil {
@@ -115,15 +118,8 @@ func guarded[In, Out any](t *tools, handler mcp.ToolHandlerFor[In, Out]) mcp.Too
 			write = false
 		}
 		if args, ok := any(in).(manageRepositoryInput); ok {
-			write = args.hasSettings()
-			if args.BranchRestriction != nil {
-				action := args.BranchRestriction.Action
-				write = write || (action != "list" && action != "get")
-			}
-			if args.Webhook != nil {
-				action := args.Webhook.Action
-				write = write || (action != "list" && action != "get")
-			}
+			// Batches handle their own approval so one page covers all actions, including reads.
+			write = args.batch() || args.writes()
 		}
 		if !write && len(t.policy.ConfirmationTools) > 0 && t.policy.requiresConfirmation(req.Params.Name) {
 			page, err := t.claimSecrets(req, in)
@@ -183,6 +179,9 @@ func (p Policy) requiresConfirmation(name string) bool {
 }
 
 func (p Policy) requiresCallConfirmation(name string, in any) bool {
+	if args, ok := in.(manageRepositoryInput); ok && len(p.ConfirmationTools) == 0 {
+		return slices.ContainsFunc(args.selectedActions(), repositoryAction.writes)
+	}
 	if name == "api_request" && len(p.ConfirmationTools) == 0 {
 		if request, ok := in.(apiRequestInput); ok {
 			return request.Method != "GET" && request.Method != "HEAD" && request.Method != "OPTIONS"

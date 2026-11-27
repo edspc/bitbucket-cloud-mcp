@@ -124,7 +124,7 @@ func newServer(impl *mcp.Implementation, t *tools) *mcp.Server {
 	}, guarded(t, t.getBranchRestrictions))
 	registerTool(t, s, &mcp.Tool{
 		Name: "manage_repository", Title: "Update repository settings",
-		Description: "Read or update repository settings, Git branch restrictions including pipeline push access, and repository webhooks. Changing the slug also changes the repository name.",
+		Description: "Read or update repository settings, Git branch restrictions and webhooks. Use repo or repos and optionally an ordered actions list applied to each repository. Batches support up to 100 repository/action combinations and stop at the first failure with per-action results. A batch of writes asks for one approval by default. Changing the slug also changes the repository name.",
 		Annotations: write,
 	}, guarded(t, t.manageRepository))
 	registerTool(t, s, &mcp.Tool{

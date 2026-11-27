@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -200,7 +201,9 @@ func needsSecrets(in any) bool {
 	case runPipelineInput:
 		return len(in.SecretVariables) > 0
 	case manageRepositoryInput:
-		return in.Webhook != nil && in.Webhook.SetSecret
+		return slices.ContainsFunc(in.selectedActions(), func(action repositoryAction) bool {
+			return action.Webhook != nil && action.Webhook.SetSecret
+		})
 	}
 	return false
 }

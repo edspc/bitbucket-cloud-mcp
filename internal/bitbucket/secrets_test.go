@@ -44,8 +44,8 @@ func TestWebhookReadsWithholdDestinationInAPIErrors(t *testing.T) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		_, _ = io.WriteString(w, `{"error":{"message":"failed to read https://example.invalid/hooks/path-marker"}}`)
 	})
-	_, getErr := c.Webhook(t.Context(), "repo-a", "{hook}")
-	_, listErr := c.ListWebhooks(t.Context(), "repo-a", 1, 10)
+	_, getErr := c.Webhook(t.Context(), "repo-a", "{hook}", nil)
+	_, listErr := c.ListWebhooks(t.Context(), "repo-a", 1, 10, nil)
 	for _, err := range []error{getErr, listErr} {
 		wait, limited := RateLimited(err)
 		if !limited || wait.Seconds() != 60 || strings.Contains(err.Error(), "path-marker") {

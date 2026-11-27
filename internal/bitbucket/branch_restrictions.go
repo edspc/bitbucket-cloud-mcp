@@ -32,9 +32,13 @@ type BranchRule struct {
 	BranchRuleFields
 }
 
-func (c *Client) ListBranchRules(ctx context.Context, repo string, page, limit int) (Page[BranchRule], error) {
+func (c *Client) ListBranchRules(ctx context.Context, repo string, page, limit int, before *Repository) (Page[BranchRule], error) {
+	target, err := c.repositoryReadURL(ctx, repo, before, "branch-restrictions")
+	if err != nil {
+		return Page[BranchRule]{}, err
+	}
 	query := url.Values{"page": {strconv.Itoa(page)}, "pagelen": {strconv.Itoa(limit)}}
-	result, err := readPage[BranchRule](ctx, c, APIURL+c.repoPath(repo, "branch-restrictions")+"?"+query.Encode(), limit)
+	result, err := readPageUnchecked[BranchRule](ctx, c, target+"?"+query.Encode(), limit)
 	return Page[BranchRule]{Values: result.Values, More: result.Next != "", Total: result.Size}, err
 }
 

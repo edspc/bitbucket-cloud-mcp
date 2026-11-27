@@ -47,15 +47,23 @@ func isWebhookAPIPath(path string) bool {
 		len(parts) >= 3 && parts[0] == "workspaces" && parts[2] == "hooks"
 }
 
-func (c *Client) ListWebhooks(ctx context.Context, repo string, page, limit int) (Page[Webhook], error) {
+func (c *Client) ListWebhooks(ctx context.Context, repo string, page, limit int, before *Repository) (Page[Webhook], error) {
+	target, err := c.repositoryReadURL(ctx, repo, before, "hooks")
+	if err != nil {
+		return Page[Webhook]{}, err
+	}
 	q := url.Values{"page": {strconv.Itoa(page)}, "pagelen": {strconv.Itoa(limit)}}
-	result, err := readPage[Webhook](ctx, c, APIURL+c.repoPath(repo, "hooks")+"?"+q.Encode(), limit)
+	result, err := readPageUnchecked[Webhook](ctx, c, target+"?"+q.Encode(), limit)
 	return Page[Webhook]{Values: result.Values, More: result.Next != "", Total: result.Size}, err
 }
 
-func (c *Client) Webhook(ctx context.Context, repo, id string) (Webhook, error) {
+func (c *Client) Webhook(ctx context.Context, repo, id string, before *Repository) (Webhook, error) {
+	target, err := c.repositoryReadURL(ctx, repo, before, "hooks", id)
+	if err != nil {
+		return Webhook{}, err
+	}
 	var hook Webhook
-	err := c.call(ctx, http.MethodGet, c.repoPath(repo, "hooks", id), nil, &hook)
+	err = c.sendUnchecked(ctx, http.MethodGet, target, c.basicAuth, nil, &hook)
 	return hook, err
 }
 

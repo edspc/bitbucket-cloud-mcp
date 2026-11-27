@@ -79,7 +79,7 @@ func (c *Client) ListRepositories(ctx context.Context, f RepositoryFilter, page,
 	if q != "" {
 		values.Set("q", q)
 	}
-	p, err := readWorkspacePage[Repository](ctx, c, APIURL+escapedPath("repositories", c.cfg.Workspace)+"?"+values.Encode(), limit)
+	p, err := readPageUnchecked[Repository](ctx, c, APIURL+escapedPath("repositories", c.cfg.Workspace)+"?"+values.Encode(), limit)
 	return Page[Repository]{Values: p.Values, Total: p.Size, More: p.Next != ""}, err
 }
 
