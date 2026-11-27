@@ -219,6 +219,34 @@ also changes the name. The result contains the slug Bitbucket returns and
 the resulting URL. Both the current repository and its destination must
 satisfy server access policy. Updates require confirmation by default.
 
+### Repository webhooks
+
+Use `get_repository` with `{"repo":"my-repo","webhook":{}}` to list webhooks.
+Pass `page` and `limit` inside `webhook` for pagination, or supply `uuid`
+to read one webhook. Results contain the configured event keys, active flag,
+description, destination URL and whether a signing secret is set. URL
+credentials, query strings and fragments are omitted from results.
+
+Use `manage_repository` with `webhook.action` set to `list`, `get`,
+`create`, `update` or `delete`. Make a separate call for repository
+settings or branch restrictions. For creation, provide `settings` containing
+`url`, `description`, `active` and a nonempty `events` array. Use
+`uuid` for get, update and delete. Updates send only supplied fields,
+including `active: false` and empty descriptions. Keep credentials out of
+the webhook URL. Set `set_secret: true` to enter a signing secret in the
+local browser page, or `remove_secret: true` on update to clear it.
+Writes require confirmation by default.
+
+```json
+{"repo":"my-repo","webhook":{"action":"create","settings":{"url":"https://example.com/webhook","description":"CI events","active":true,"events":["repo:push"]}}}
+```
+
+Bitbucket Cloud provides delivery logging and delivery records through
+Repository settings > Webhooks > View requests > Enable history.
+Its public API serves webhook subscriptions and their configured event keys.
+See [Troubleshoot webhooks](https://support.atlassian.com/bitbucket-cloud/kb/troubleshoot-webhooks/)
+for delivery history.
+
 ### Git branch restrictions
 
 `get_branch_restrictions` reads rules using `repo` and optional `page` and

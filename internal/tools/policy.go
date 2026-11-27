@@ -124,6 +124,10 @@ func guarded[In, Out any](t *tools, handler mcp.ToolHandlerFor[In, Out]) mcp.Too
 				action := args.BranchRestriction.Action
 				write = write || (action != "list" && action != "get")
 			}
+			if args.Webhook != nil {
+				action := args.Webhook.Action
+				write = write || (action != "list" && action != "get")
+			}
 		}
 		if !write && len(t.policy.ConfirmationTools) > 0 && t.policy.requiresConfirmation(req.Params.Name) {
 			page, err := t.claimSecrets(req, in)

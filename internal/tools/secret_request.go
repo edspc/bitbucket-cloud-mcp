@@ -199,6 +199,8 @@ func needsSecrets(in any) bool {
 		return in.Secured
 	case runPipelineInput:
 		return len(in.SecretVariables) > 0
+	case manageRepositoryInput:
+		return in.Webhook != nil && in.Webhook.SetSecret
 	}
 	return false
 }

@@ -197,6 +197,8 @@ func secretPayload(in any) bool {
 	switch v := in.(type) {
 	case Variable:
 		return v.Secured
+	case WebhookWrite:
+		return v.Secret != nil || v.URL != nil && strings.Contains(*v.URL, "?")
 	case RunRequest:
 		for _, variable := range v.Variables {
 			if variable.Secured {

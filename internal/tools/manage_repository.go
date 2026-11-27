@@ -11,6 +11,7 @@ import (
 )
 
 type manageRepositoryInput struct {
+	Webhook           *webhookInput           `json:"webhook,omitempty" jsonschema:"manage repository webhooks in a separate call"`
 	BranchRestriction *branchRestrictionInput `json:"branch_restriction,omitempty" jsonschema:"manage one Git branch rule separately from repository settings"`
 	Repo              string                  `json:"repo" jsonschema:"current repository slug"`
 	Slug              string                  `json:"slug,omitempty" jsonschema:"new lowercase slug; also changes the repository name"`
@@ -20,6 +21,9 @@ type manageRepositoryInput struct {
 }
 
 type manageRepositoryResult struct {
+	Webhook                    *bitbucket.Webhook      `json:"webhook,omitempty"`
+	Webhooks                   *[]bitbucket.Webhook    `json:"webhooks,omitempty"`
+	DeletedWebhookUUID         string                  `json:"deleted_webhook_uuid,omitempty"`
 	ContentTrust               string                  `json:"content_trust"`
 	Repository                 *repositoryView         `json:"repository,omitempty"`
 	BranchRestriction          *bitbucket.BranchRule   `json:"branch_restriction,omitempty"`
@@ -30,12 +34,17 @@ type manageRepositoryResult struct {
 }
 
 type getRepositoryInput struct {
-	Repo string `json:"repo" jsonschema:"repository slug"`
+	Webhook *webhookReadInput `json:"webhook,omitempty" jsonschema:"list repository webhooks or read one by uuid"`
+	Repo    string            `json:"repo" jsonschema:"repository slug"`
 }
 
 func (t *tools) getRepository(ctx context.Context, _ *mcp.CallToolRequest, in getRepositoryInput) (*mcp.CallToolResult, manageRepositoryResult, error) {
 	if err := t.policy.checkRepo(in.Repo); err != nil {
 		return nil, manageRepositoryResult{}, err
+	}
+	if in.Webhook != nil {
+		out, err := t.readWebhooks(ctx, in.Repo, *in.Webhook)
+		return nil, out, err
 	}
 	repo, err := t.bb.RepositorySettings(ctx, in.Repo)
 	if err != nil {
@@ -54,6 +63,12 @@ func (t *tools) manageRepository(ctx context.Context, req *mcp.CallToolRequest, 
 		return nil, manageRepositoryResult{}, err
 	}
 	hasSettings := in.hasSettings()
+	if in.Webhook != nil {
+		if hasSettings || in.BranchRestriction != nil {
+			return nil, manageRepositoryResult{}, errors.New("webhook must be called separately from repository settings and branch restrictions")
+		}
+		return t.manageWebhook(ctx, req, in)
+	}
 	if in.BranchRestriction != nil {
 		if hasSettings {
 			return nil, manageRepositoryResult{}, errors.New("branch_restriction must be called separately from repository settings changes")

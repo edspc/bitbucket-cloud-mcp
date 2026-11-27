@@ -47,6 +47,12 @@ User lookups with `get_uuid` additionally require `read:user:bitbucket`.
 `read:project:bitbucket` when the server must resolve the destination project
 key to check a project UUID allowlist.
 
+Repository webhooks require `read:webhook:bitbucket` to list or get,
+`write:webhook:bitbucket` in addition to create or update, and
+`delete:webhook:bitbucket` to delete. Creating or updating a subscription
+may also require scopes for its selected events. Webhook writes read
+repository identity before confirmation and before writing.
+
 ## Read-only mode
 
 Start the server with `--read-only` or set `BITBUCKET_READ_ONLY=true`.

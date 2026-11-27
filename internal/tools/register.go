@@ -116,7 +116,7 @@ func newServer(impl *mcp.Implementation, t *tools) *mcp.Server {
 	}, guarded(t, t.searchRepositories))
 	registerTool(t, s, &mcp.Tool{
 		Name: "get_repository", Title: "Read repository settings", Annotations: readOnly,
-		Description: "Read an existing repository's slug, project, description, language, privacy and main branch.",
+		Description: "Read repository settings, or list and get webhooks using the webhook parameter.",
 	}, guarded(t, t.getRepository))
 	registerTool(t, s, &mcp.Tool{
 		Name: "get_branch_restrictions", Title: "Read Git branch restrictions", Annotations: readOnly,
@@ -124,7 +124,7 @@ func newServer(impl *mcp.Implementation, t *tools) *mcp.Server {
 	}, guarded(t, t.getBranchRestrictions))
 	registerTool(t, s, &mcp.Tool{
 		Name: "manage_repository", Title: "Update repository settings",
-		Description: "Read or update repository settings, or list, get, create, update and delete Git branch restrictions, including pipeline push access. Changing the slug also changes the repository name.",
+		Description: "Read or update repository settings, Git branch restrictions including pipeline push access, and repository webhooks. Changing the slug also changes the repository name.",
 		Annotations: write,
 	}, guarded(t, t.manageRepository))
 	registerTool(t, s, &mcp.Tool{

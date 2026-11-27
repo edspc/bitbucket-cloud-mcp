@@ -40,16 +40,17 @@ type secretPage struct {
 
 // secretPageInfo is what the page tells the user and asks for.
 type secretPageInfo struct {
-	Tool      string     // MCP name of the tool that asks; set by askSecrets
-	Title     string     // its human title
-	Need      string     // what the user has to do now
-	Outcome   string     // what happens with the values
-	Token     *tokenHelp // set when the user first creates an access token
-	Fields    []secretField
-	Until     time.Time // when the page closes; set by askSecrets
-	Workspace string
-	Arguments string // complete non-secret arguments, rendered as escaped JSON
-	Commit    string // pinned pipeline SHA, retained on the server for the approved run
+	Tool       string     // MCP name of the tool that asks; set by askSecrets
+	Title      string     // its human title
+	Need       string     // what the user has to do now
+	Outcome    string     // what happens with the values
+	Token      *tokenHelp // set when the user first creates an access token
+	Fields     []secretField
+	Until      time.Time // when the page closes; set by askSecrets
+	Workspace  string
+	Arguments  string // complete non-secret arguments, rendered as escaped JSON
+	Commit     string // pinned pipeline SHA, retained on the server for the approved run
+	webhookURL string // raw destination retained only on the server to bind webhook approval
 }
 
 // tokenHelp tells the user where and how to create the access token to paste.
