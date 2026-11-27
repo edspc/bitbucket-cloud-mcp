@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -147,6 +148,9 @@ func TestLinkByTokenDeploymentScope(t *testing.T) {
 	if got := f.varsOf("repo-b"); len(got) != 0 {
 		t.Fatalf("repository variables = %+v", got)
 	}
+	if got := f.mutationList(); !slices.Equal(got, []string{"POST /2.0/repositories/ws/" + fakeTargetUUID + "/deployments_config/environments/{env-prod}/variables"}) {
+		t.Fatalf("mutations = %v", got)
+	}
 }
 
 func TestLinkByTokenExistingVariable(t *testing.T) {
@@ -170,6 +174,56 @@ func TestLinkByTokenExistingVariable(t *testing.T) {
 	want := []bitbucket.Variable{{UUID: "{var-1}", Key: "REPO_A_TOKEN", Value: "repo-a-token", Secured: true}}
 	if got := f.varsOf("repo-b"); !slices.Equal(got, want) {
 		t.Fatalf("variables = %+v", got)
+	}
+	if got := f.mutationList(); !slices.Equal(got, []string{"PUT /2.0/repositories/ws/" + fakeTargetUUID + "/pipelines_config/variables/{var-1}"}) {
+		t.Fatalf("mutations = %v", got)
+	}
+}
+
+func TestLinkByTokenBindsBothRepositoryUUIDs(t *testing.T) {
+	for _, repo := range []string{"repo-a", "repo-b"} {
+		for _, phase := range []string{"before retry", "during token probe"} {
+			t.Run(repo+"/"+phase, func(t *testing.T) {
+				f := newFake()
+				cs := connectRetryingItself(t, f)
+				replace := func() {
+					f.mu.Lock()
+					defer f.mu.Unlock()
+					f.repoUUIDs[repo] = "{cccccccc-cccc-4ccc-8ccc-cccccccccccc}"
+				}
+				upstream := f.handler(t)
+				h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					upstream.ServeHTTP(w, r)
+					if phase == "during token probe" && r.Header.Get("Authorization") == "Bearer "+f.validToken {
+						replace()
+					}
+				})
+				f.tools.bb = bitbucket.New(&http.Client{Transport: handlerTransport{h}}, bitbucket.Config{Workspace: "ws"})
+				args := tokenArgs("repository", "", false)
+				first, err := cs.CallTool(t.Context(), &mcp.CallToolParams{Name: "link_repos_by_token", Arguments: args})
+				if err != nil || first.IsError {
+					t.Fatalf("initial approval: %+v, %v", first, err)
+				}
+				pageURL := first.InputRequests[secretsInputID].(*mcp.ElicitParams).URL
+				if status := f.pages.submit(pageURL, url.Values{tokenField: {f.validToken}}); status != http.StatusSeeOther {
+					t.Fatal(status)
+				}
+				if shown := f.pages.openedPage(); !strings.Contains(shown, fakeSourceUUID) || !strings.Contains(shown, fakeTargetUUID) {
+					t.Fatal("approval page omitted a repository UUID")
+				}
+				if phase == "before retry" {
+					replace()
+				}
+				res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{
+					Name: "link_repos_by_token", Arguments: args, RequestState: first.RequestState,
+					InputResponses: mcp.InputResponseMap{secretsInputID: &mcp.ElicitResult{Action: "accept"}},
+				})
+				if err != nil || !res.IsError || len(f.mutationList()) != 0 {
+					t.Fatalf("changed repository accepted approval: %+v, %v", res, err)
+				}
+				expectPagesClosed(t, f, 1)
+			})
+		}
 	}
 }
 

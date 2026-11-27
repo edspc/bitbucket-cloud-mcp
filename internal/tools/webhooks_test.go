@@ -16,7 +16,7 @@ func TestRepositoryWebhookOperations(t *testing.T) {
 	const repo = "/2.0/repositories/ws/repo-a"
 	const pinned = "/2.0/repositories/ws/" + repoUUID + "/hooks"
 	hook := map[string]any{
-		"uuid": hookUUID, "url": "https://user:password@example.com/webhook?token=hidden",
+		"uuid": hookUUID, "url": "https://user:password@example.com/webhook/path-marker?token=hidden",
 		"active": true, "events": []string{"repo:push"}, "secret_set": true, "secret": "never-return-this",
 	}
 	var writes []string
@@ -62,7 +62,7 @@ func TestRepositoryWebhookOperations(t *testing.T) {
 	run := func(tool string, args map[string]any) manageRepositoryResult {
 		t.Helper()
 		result := mustCall(t, cs, tool, map[string]any{"repo": "repo-a", "webhook": args})
-		for _, secret := range []string{"password", "hidden", "never-return-this"} {
+		for _, secret := range []string{"password", "path-marker", "hidden", "never-return-this"} {
 			if strings.Contains(result, secret) {
 				t.Fatal("secret leaked into webhook result")
 			}
@@ -70,7 +70,7 @@ func TestRepositoryWebhookOperations(t *testing.T) {
 		return decodeResult[manageRepositoryResult](t, result)
 	}
 	out := run("get_repository", map[string]any{"page": 2, "limit": 1})
-	if out.Webhooks == nil || len(*out.Webhooks) != 1 || out.NextPage != 3 || (*out.Webhooks)[0].URL != "https://example.com/webhook" {
+	if out.Webhooks == nil || len(*out.Webhooks) != 1 || out.NextPage != 3 || (*out.Webhooks)[0].URL != "https://example.com" {
 		t.Fatalf("unexpected webhook page: %+v", out)
 	}
 	out = run("get_repository", map[string]any{"uuid": hookUUID})

@@ -37,13 +37,7 @@ func webhookUUID(value string) (string, error) {
 }
 
 func webhookView(hook bitbucket.Webhook) bitbucket.Webhook {
-	u, err := url.Parse(hook.URL)
-	if err != nil {
-		hook.URL = ""
-		return hook
-	}
-	u.User, u.RawQuery, u.Fragment, u.RawFragment, u.ForceQuery = nil, "", "", "", false
-	hook.URL = u.String()
+	hook.URL = bitbucket.PublicWebhookURL(hook.URL)
 	return hook
 }
 

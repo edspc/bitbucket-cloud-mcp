@@ -15,6 +15,10 @@ func TestSecretRequestsWithholdAPIErrorDetails(t *testing.T) {
 		for _, operation := range []string{"create", "update", "run", "probe"} {
 			t.Run(fmt.Sprintf("%s/%d", operation, status), func(t *testing.T) {
 				c := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Query().Has("fields") {
+						_, _ = fmt.Fprintf(w, `{"uuid":%q}`, testRepoUUID)
+						return
+					}
 					w.Header().Set("Retry-After", "60")
 					w.WriteHeader(status)
 					_, _ = io.WriteString(w, `{"error":{"message":"echo: secret-marker and encoded-secret-marker"}}`)
@@ -34,6 +38,22 @@ func TestSecretRequestsWithholdAPIErrorDetails(t *testing.T) {
 	}
 }
 
+func TestWebhookReadsWithholdDestinationInAPIErrors(t *testing.T) {
+	c := newTestClient(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "60")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":{"message":"failed to read https://example.invalid/hooks/path-marker"}}`)
+	})
+	_, getErr := c.Webhook(t.Context(), "repo-a", "{hook}")
+	_, listErr := c.ListWebhooks(t.Context(), "repo-a", 1, 10)
+	for _, err := range []error{getErr, listErr} {
+		wait, limited := RateLimited(err)
+		if !limited || wait.Seconds() != 60 || strings.Contains(err.Error(), "path-marker") {
+			t.Fatalf("unsafe webhook error or missing rate limit: %v", err)
+		}
+	}
+}
+
 func secretOperation(c *Client, operation string) error {
 	ctx := context.Background()
 	v := Variable{UUID: "{v}", Key: "TOKEN", Value: "secret-marker", Secured: true}
@@ -46,13 +66,16 @@ func secretOperation(c *Client, operation string) error {
 		_, err := c.RunPipeline(ctx, "repo-a", RunRequest{Target: RefTarget("branch", "main", ""), Variables: []Variable{v}})
 		return err
 	default:
-		return c.CheckTokenAccess(ctx, "repo-a", "secret-marker", []string{"repository"})
+		return c.CheckTokenAccess(ctx, "repo-a", Repository{UUID: testRepoUUID}, "secret-marker", []string{"repository"})
 	}
 }
 
 func TestSecretRequestsWithholdTransportErrors(t *testing.T) {
 	for _, operation := range []string{"create", "update", "run", "probe"} {
 		c := New(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Query().Has("fields") {
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{"uuid":%q}`, testRepoUUID)))}, nil
+			}
 			return nil, errors.New("transport reflected secret-marker")
 		})}, Config{Workspace: "ws", Email: testEmail, Token: testToken})
 		if err := secretOperation(c, operation); err == nil || strings.Contains(err.Error(), "secret-marker") {

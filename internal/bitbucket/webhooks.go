@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 type Webhook struct {
@@ -27,6 +28,23 @@ type WebhookSettings struct {
 type WebhookWrite struct {
 	WebhookSettings
 	Secret *string `json:"secret,omitempty"`
+}
+
+// PublicWebhookURL returns the origin because webhook credentials can be part of the path.
+func PublicWebhookURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return ""
+	}
+	origin := url.URL{Scheme: u.Scheme, Host: u.Host}
+	return origin.String()
+}
+
+func isWebhookAPIPath(path string) bool {
+	path = strings.TrimPrefix(path, "/2.0/")
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	return len(parts) >= 4 && parts[0] == "repositories" && parts[3] == "hooks" ||
+		len(parts) >= 3 && parts[0] == "workspaces" && parts[2] == "hooks"
 }
 
 func (c *Client) ListWebhooks(ctx context.Context, repo string, page, limit int) (Page[Webhook], error) {

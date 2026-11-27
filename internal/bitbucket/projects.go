@@ -48,11 +48,16 @@ func (c *Client) CheckRepositoryProject(ctx context.Context, repo string) error 
 	if err := c.sendUnchecked(ctx, http.MethodGet, APIURL+c.repoPath(repo)+"?fields=project.key,project.uuid", c.basicAuth, nil, &metadata); err != nil {
 		return fmt.Errorf("checking repository project for %s: %w", repo, err)
 	}
-	if metadata.Project.Key != "" && slices.Contains(c.allowedProjects, metadata.Project.Key) ||
-		metadata.Project.UUID != "" && slices.Contains(c.allowedProjects, metadata.Project.UUID) {
+	if c.allowsRepositoryProject(repo, metadata.Project.Key, metadata.Project.UUID) {
 		return nil
 	}
 	return errors.New("repository project is not allowed by the server policy")
+}
+
+func (c *Client) allowsRepositoryProject(repo, key, uuid string) bool {
+	return c.allowedProjects == nil || slices.Contains(c.allowedRepos, repo) ||
+		key != "" && slices.Contains(c.allowedProjects, key) ||
+		uuid != "" && slices.Contains(c.allowedProjects, uuid)
 }
 
 func (c *Client) checkProjectURL(ctx context.Context, rawURL string) error {

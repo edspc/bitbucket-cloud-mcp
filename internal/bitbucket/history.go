@@ -9,8 +9,6 @@ import (
 	"strings"
 )
 
-const maxHistoryCursorBytes = 16 << 10
-
 // HistoryCommit keeps the fields needed to choose and read a past revision.
 type HistoryCommit struct {
 	Hash    string `json:"hash"`
@@ -85,12 +83,11 @@ func (c *Client) ListCommits(ctx context.Context, repo, revision, path string, r
 
 // Continuations stay opaque: validate their authority and selection without rebuilding them.
 func validateHistoryCursor(cursor string, target *url.URL) error {
-	if len(cursor) > maxHistoryCursorBytes {
+	if len(cursor) > maxPaginationCursorBytes {
 		return errors.New("history cursor exceeds 16 KiB")
 	}
 	next, err := url.Parse(cursor)
-	if err != nil || next.Scheme != target.Scheme || next.Host != target.Host || next.User != nil || strings.Contains(cursor, "#") ||
-		strings.TrimSuffix(next.EscapedPath(), "/") != strings.TrimSuffix(target.EscapedPath(), "/") {
+	if err != nil || !samePageCollection(cursor, next, target) {
 		return errors.New("history cursor must stay on the requested Bitbucket API repository, revision and endpoint")
 	}
 	query, err := url.ParseQuery(next.RawQuery)

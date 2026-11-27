@@ -30,7 +30,7 @@ type watchPipelineInput struct {
 	TimeoutSeconds      int    `json:"timeout_seconds,omitempty" jsonschema:"how long to wait for the pipeline to finish; 600 when omitted, at most 3600"`
 	PollIntervalSeconds int    `json:"poll_interval_seconds,omitempty" jsonschema:"base polling interval for this call in seconds; 30 when omitted or zero, otherwise 1 to 60. Doubled with project restrictions and increased for additional log requests; shorter intervals consume API rate limits faster"`
 	StreamLogs          bool   `json:"stream_logs,omitempty" jsonschema:"stream new log lines through progress notifications; requires a client progress token. False by default"`
-	Step                string `json:"step,omitempty" jsonschema:"with stream_logs, follow only this step name or UUID; otherwise all started steps"`
+	Step                string `json:"step,omitempty" jsonschema:"with stream_logs, follow only this step UUID or unique step name; otherwise all started steps"`
 }
 
 type watchPipelineResult struct {

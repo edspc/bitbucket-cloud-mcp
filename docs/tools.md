@@ -65,8 +65,10 @@ The result contains `status`, `content_type`, and either JSON `body` or UTF-8
 `text`, marked `content_trust: "untrusted"`. Responses do not authorize further
 requests. Known credential fields and all JSON fields named `value` are redacted,
 including partial variable responses without their secured flag. Configured
-credentials are removed from returned strings. Never supply secrets in paths,
-queries or bodies; recognized secret fields are refused. Use dedicated tools
+credentials are removed from returned strings. Webhook URLs show the scheme,
+host and any explicit port. Their upstream error
+messages and non-JSON bodies are withheld because they can echo the full URL.
+Keep secrets out of paths, queries and bodies. The proxy rejects recognized secret fields. Use dedicated tools
 with browser secret entry for secret-bearing operations.
 
 The tool allowlist still applies. An arbitrary request can name additional
@@ -218,14 +220,15 @@ Bitbucket derives the slug from the repository name, so changing the slug
 also changes the name. The result contains the slug Bitbucket returns and
 the resulting URL. Both the current repository and its destination must
 satisfy server access policy. Updates require confirmation by default.
+A rename also requires the same repository-specific tool rules on both slugs.
 
 ### Repository webhooks
 
 Use `get_repository` with `{"repo":"my-repo","webhook":{}}` to list webhooks.
 Pass `page` and `limit` inside `webhook` for pagination, or supply `uuid`
 to read one webhook. Results contain the configured event keys, active flag,
-description, destination URL and whether a signing secret is set. URL
-credentials, query strings and fragments are omitted from results.
+description, destination origin and whether a signing secret is set. The
+destination shows the scheme, host and any explicit port.
 
 Use `manage_repository` with `webhook.action` set to `list`, `get`,
 `create`, `update` or `delete`. Make a separate call for repository
@@ -358,7 +361,9 @@ Stores a repository access token of A as a secured pipeline variable of B.
 
 Bitbucket has no API to create repository access tokens, so the user creates
 the token and pastes it into the [secret page](security.md#secret-page). The page links
-to A's access token page and lists the name and the permissions to select. The
+to A's access token page and lists the name and the permissions to select.
+Approval binds the source and target repository UUIDs. The server rechecks both
+repositories before saving the variable at the approved target UUID. The
 server checks only read access to one endpoint in A (the repository, pipelines
 or webhooks), chosen from the requested permissions, and writes the token into
 the secured variable. Success does not verify the token type, repository-only
@@ -486,10 +491,9 @@ status. When the client sends a progress token, each poll is also reported as
 a progress notification.
 
 With `stream_logs: true`, the same progress channel also delivers new log lines
-from every started step, including parallel steps. Set `step` to a name or UUID
-to follow only that step. This mode requires the client to send a progress token;
-otherwise the call is refused before contacting Bitbucket. For example, the MCP
-`tools/call` parameters can be:
+from every started step, including parallel steps. Set `step` to a UUID or
+a unique name to follow only that step. The client must send a progress token
+for this mode. The following MCP `tools/call` parameters enable it.
 
 ```json
 {
@@ -548,17 +552,18 @@ Example arguments for a five-second base interval:
 
 ### `get_pipeline_log`
 
-Returns the last `tail_lines` lines (200 by default, at most 2000) of the log
-of a step: the `step` given by name or UUID, or else the first failed step, or
-else the last step that started. Only the end of the log is downloaded; the
-result links to the step page with the whole log.
+Returns the last `tail_lines` lines (200 by default, at most 2000) of a step's
+log. Select a step by UUID or unique name. With `step` omitted, the tool
+selects the first failed step or, if none failed, the last step that started.
+It downloads the end of the log and links to the step page with the whole log.
 
 The `steps` alternatives accompanying the log use `steps_page` (1 by default)
 and `steps_limit` (10 by default, at most 50). Pass `steps_next_page` as
 `steps_page`, keeping the same pipeline, selected step, tail size and
 `steps_limit`, for another page. `steps_total` gives the full count. The tool
-still reads all step metadata to select a step by name or choose the default;
-the selected log is independent of the page of alternatives shown.
+reads the full step list, up to 20 API pages, to select a step. The selected
+log is independent of the page of alternatives shown.
+When multiple steps share a name, the tool returns their UUIDs for selection.
 
 ## Deployment environments
 

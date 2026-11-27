@@ -149,6 +149,7 @@ func (c *Client) DoAPIRequest(ctx context.Context, in APIRequest) (APIResponse, 
 		return APIResponse{}, errors.New("bitbucket API request failed; transport details withheld")
 	}
 	defer func() { _ = resp.Body.Close() }()
+	webhook := isWebhookAPIPath(u.Path)
 	if resp.StatusCode >= 300 {
 		err := newAPIError(in.Method, u.Path, resp)
 		err.Message = c.redactAPICredentials(err.Message)
@@ -168,10 +169,13 @@ func (c *Client) DoAPIRequest(ctx context.Context, in APIRequest) (APIResponse, 
 		if err = decoder.Decode(&out.Body); err != nil {
 			return APIResponse{}, errors.New("invalid Bitbucket JSON response")
 		}
-		out.Body = c.redactAPIValue(out.Body)
+		out.Body = c.redactAPIValue(out.Body, webhook)
 	} else {
 		if strings.Contains(strings.ToLower(out.ContentType), "json") {
 			return APIResponse{}, fmt.Errorf("bitbucket returned HTTP %d with invalid JSON; response withheld; check the outcome before repeating writes", resp.StatusCode)
+		}
+		if webhook {
+			return APIResponse{}, fmt.Errorf("bitbucket returned a non-JSON webhook response (HTTP %d); check the outcome before repeating writes", resp.StatusCode)
 		}
 		if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
 			return APIResponse{}, fmt.Errorf("bitbucket returned HTTP %d with a binary response; binary downloads are unsupported", resp.StatusCode)
@@ -207,7 +211,7 @@ func sensitiveAPIBody(value any) bool {
 	return false
 }
 
-func (c *Client) redactAPIValue(value any) any {
+func (c *Client) redactAPIValue(value any, webhook bool) any {
 	switch v := value.(type) {
 	case map[string]any:
 		out := make(map[string]any, len(v))
@@ -215,13 +219,17 @@ func (c *Client) redactAPIValue(value any) any {
 			// Partial-response fields can omit both the variable's key and its secured flag.
 			if sensitiveAPIField(key) || key == "value" {
 				child = "[REDACTED]"
+			} else if webhook && strings.EqualFold(key, "url") {
+				if raw, ok := child.(string); ok {
+					child = PublicWebhookURL(raw)
+				}
 			}
-			out[c.redactAPICredentials(key)] = c.redactAPIValue(child)
+			out[c.redactAPICredentials(key)] = c.redactAPIValue(child, webhook)
 		}
 		return out
 	case []any:
 		for i := range v {
-			v[i] = c.redactAPIValue(v[i])
+			v[i] = c.redactAPIValue(v[i], webhook)
 		}
 	case string:
 		return c.redactAPICredentials(v)

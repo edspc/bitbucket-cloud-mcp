@@ -28,6 +28,7 @@ type fakeBitbucket struct {
 	mu          sync.Mutex
 	pipelines   map[string]bool
 	projects    map[string]string // current project key by repository
+	repoUUIDs   map[string]string
 	sshKeys     map[string]string
 	deployKeys  map[string][]bitbucket.DeployKey
 	deployments map[string][]bitbucket.Deployment
@@ -93,6 +94,11 @@ type stubPages struct {
 }
 
 const stubPagesHost = "127.0.0.1:4242"
+
+const (
+	fakeSourceUUID = "{aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa}"
+	fakeTargetUUID = "{bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb}"
+)
 
 func (s *stubPages) serve(h http.Handler, _ time.Time) (string, <-chan struct{}, error) {
 	s.mu.Lock()
@@ -197,6 +203,7 @@ func newFake() *fakeBitbucket {
 		refCommit:   testPipelineCommit,
 		commits:     map[string]string{},
 		pipelines:   map[string]bool{"repo-a": true, "repo-b": true},
+		repoUUIDs:   map[string]string{"repo-a": fakeSourceUUID, "repo-b": fakeTargetUUID},
 		sshKeys:     map[string]string{"repo-a": "ssh-rsa KEYA"},
 		deployKeys:  map[string][]bitbucket.DeployKey{},
 		envs:        map[string][]bitbucket.Environment{"repo-b": {{UUID: "{env-prod}", Name: "Production"}, {UUID: "{env-test}", Name: "Test"}}},
@@ -270,8 +277,9 @@ func (f *fakeBitbucket) handler(t *testing.T) http.Handler {
 	// Endpoints an access token is checked against: only repo-a's own token may read them.
 	for _, path := range []string{"", "/pipelines", "/hooks"} {
 		mux.HandleFunc("GET "+repo+path, func(w http.ResponseWriter, r *http.Request) {
-			if _, _, ok := r.BasicAuth(); ok && path == "" && r.URL.Query().Get("fields") == "project.key,project.uuid" {
-				writeJSON(w, map[string]any{"project": map[string]string{"key": f.projects[r.PathValue("repo")]}})
+			if _, _, ok := r.BasicAuth(); ok && path == "" && r.URL.Query().Has("fields") {
+				slug := r.PathValue("repo")
+				writeJSON(w, map[string]any{"uuid": f.repoUUIDs[slug], "slug": slug, "project": map[string]string{"key": f.projects[slug]}})
 				return
 			}
 			switch r.Header.Get("Authorization") {
@@ -359,13 +367,20 @@ func (f *fakeBitbucket) handler(t *testing.T) http.Handler {
 	})
 
 	varsKey := func(r *http.Request) string {
-		if env := r.PathValue("env"); env != "" {
-			return r.PathValue("repo") + "/" + env
+		slug := r.PathValue("repo")
+		for name, id := range f.repoUUIDs {
+			if slug == id {
+				slug = name
+				break
+			}
 		}
-		if r.PathValue("repo") == "" {
+		if env := r.PathValue("env"); env != "" {
+			return slug + "/" + env
+		}
+		if slug == "" {
 			return "workspace"
 		}
-		return r.PathValue("repo")
+		return slug
 	}
 	// Unlike Bitbucket, the fake returns secured values too, so tests show that the tools
 	// themselves never pass them on.

@@ -67,6 +67,14 @@ func TestPipelineLogPicksStep(t *testing.T) {
 		want  string // UUID of the step, or the error
 	}{
 		"by UUID": {[]bitbucket.Step{{UUID: "{a}", Name: "A", StartedOn: "t"}, {UUID: "{b}", Name: "B", StartedOn: "t"}}, "{a}", "{a}"},
+		"UUID takes precedence over name": {[]bitbucket.Step{
+			{UUID: "{first}", Name: "second", StartedOn: "t"},
+			{UUID: "{second}", Name: "Build", StartedOn: "t"},
+		}, "second", "{second}"},
+		"duplicate names": {[]bitbucket.Step{
+			{UUID: "{first}", Name: "Build", StartedOn: "t"},
+			{UUID: "{second}", Name: "Build", StartedOn: "t"},
+		}, "Build", `step name "Build" is ambiguous in pipeline #1; use a step UUID: {first}, {second}`},
 		"last started": {[]bitbucket.Step{
 			{UUID: "{a}", Name: "A", State: completed("SUCCESSFUL"), StartedOn: "t"},
 			{UUID: "{b}", Name: "B", State: bitbucket.State{Name: "IN_PROGRESS"}, StartedOn: "t"},

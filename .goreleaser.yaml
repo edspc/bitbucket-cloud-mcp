@@ -21,7 +21,8 @@ builds:
     goarch: [arm64, amd64]
     flags: [-trimpath, -mod=readonly]
     # The committed version also works for builds from the source archive.
-    ldflags: [-s, -w]
+    # Use arm64's default function alignment on amd64 as well to reduce padding.
+    ldflags: [-s, -w, -funcalign=16]
 
 archives:
   - name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}'

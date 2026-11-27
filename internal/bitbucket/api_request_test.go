@@ -135,6 +135,47 @@ func TestAPIRequestBoundsErrorsRedirectsAndText(t *testing.T) {
 	}
 }
 
+func TestAPIRequestRedactsWebhookURLs(t *testing.T) {
+	const endpoint = "/repositories/ws/repo-a/hooks"
+	const hookURL = "https://username:password@example.com:8443/hook/path-marker?signature=query-marker#fragment-marker"
+	const nextURL = APIURL + endpoint + "?page=2"
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{"single", 200, fmt.Sprintf(`{"url":%q}`, hookURL), `"url":"https://example.com:8443"`},
+		{"partial list", 200, fmt.Sprintf(`{"values":[{"url":%q},{"url":"https://%%broken/query-marker"}],"next":%q}`, hookURL, nextURL), nextURL},
+		{"error", 400, fmt.Sprintf(`{"error":{"message":%q}}`, hookURL), "400"},
+		{"non-JSON response", 200, hookURL, "non-JSON webhook response"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestClient(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = fmt.Fprint(w, tc.body)
+			})
+			out, err := c.DoAPIRequest(t.Context(), APIRequest{Method: "GET", Path: endpoint + "?fields=values.url,next"})
+			if (err != nil) != (tc.name == "error" || tc.name == "non-JSON response") {
+				t.Fatalf("unexpected response status: %+v %v", out, err)
+			}
+			data, marshalErr := json.Marshal(out)
+			if marshalErr != nil {
+				t.Fatal(marshalErr)
+			}
+			result := fmt.Sprintf("%s %v", data, err)
+			if !strings.Contains(result, tc.want) {
+				t.Fatalf("response = %s, want %q", result, tc.want)
+			}
+			for _, marker := range []string{"username", "password", "path-marker", "query-marker", "fragment-marker"} {
+				if strings.Contains(result, marker) {
+					t.Fatal("webhook URL credentials appeared in the response")
+				}
+			}
+		})
+	}
+}
+
 func TestAPIRequestRejectsExpiredApproval(t *testing.T) {
 	c := newTestClient(func(http.ResponseWriter, *http.Request) { t.Error("expired approval reached transport") })
 	ctx := WithWriteDeadline(context.Background(), time.Now().Add(-time.Second))

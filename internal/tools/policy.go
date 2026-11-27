@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 
+	"github.com/edspc/bitbucket-cloud-mcp/internal/bitbucket"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -26,12 +26,8 @@ type Policy struct {
 	Refs              []string // exact "branch:<name>" or "tag:<name>" entries
 }
 
-func validRepositorySlug(repo string) bool {
-	return repo != "." && repo != ".." && repo != "" && strings.Trim(repo, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") == ""
-}
-
 func (p Policy) checkRepo(repo string) error {
-	if !validRepositorySlug(repo) {
+	if !bitbucket.ValidRepositorySlug(repo) {
 		return errors.New("repo must be a repository slug, without path segments")
 	}
 	// With project limits, an unlisted repository may still be in an allowed project; the

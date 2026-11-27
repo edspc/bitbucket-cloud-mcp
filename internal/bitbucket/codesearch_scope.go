@@ -4,13 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strings"
 )
-
-func validCodeRepository(slug string) bool {
-	return slug != "" && slug != "." && slug != ".." &&
-		strings.Trim(slug, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") == ""
-}
 
 // codeSearchScope resolves project UUIDs as well as keys to exact repository slugs.
 // Sorting and deduplication keep the injected filter identical across cursor pages
@@ -44,7 +38,7 @@ func (c *Client) codeSearchScope(ctx context.Context) ([]string, error) {
 		}
 	}
 	for _, slug := range scope {
-		if !validCodeRepository(slug) {
+		if !ValidRepositorySlug(slug) {
 			return nil, errors.New("code search scope contains an invalid repository slug")
 		}
 	}

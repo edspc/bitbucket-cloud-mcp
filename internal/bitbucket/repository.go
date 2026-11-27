@@ -5,8 +5,15 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 )
+
+// ValidRepositorySlug reports whether slug can safely name one repository path segment.
+func ValidRepositorySlug(slug string) bool {
+	return slug != "" && slug != "." && slug != ".." &&
+		strings.Trim(slug, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") == ""
+}
 
 func (c *Client) RepositoryUUID(ctx context.Context, repo string) (string, error) {
 	var metadata struct {
@@ -36,6 +43,9 @@ type RepositoryProject struct {
 func (c *Client) RepositorySettings(ctx context.Context, repo string) (Repository, error) {
 	var out Repository
 	err := c.call(ctx, http.MethodGet, c.repoPath(repo)+"?fields=uuid,slug,name,description,language,is_private,mainbranch.name,updated_on,project.key,project.uuid,project.name", nil, &out)
+	if err == nil && !c.allowsRepositoryProject(repo, out.Project.Key, out.Project.UUID) {
+		return Repository{}, errors.New("repository project is not allowed by the server policy")
+	}
 	return out, err
 }
 

@@ -3,7 +3,10 @@ package tools
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
+
+	"github.com/edspc/bitbucket-cloud-mcp/internal/bitbucket"
 )
 
 type toolRule struct {
@@ -14,7 +17,7 @@ type toolRule struct {
 func parseToolRule(entry string) (toolRule, error) {
 	name, deny := strings.CutPrefix(entry, "!")
 	name, repo, scoped := strings.Cut(name, "@")
-	if name == "" || name != "*" && strings.Trim(name, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != "" || scoped && !validRepositorySlug(repo) {
+	if name == "" || name != "*" && strings.Trim(name, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != "" || scoped && !bitbucket.ValidRepositorySlug(repo) {
 		return toolRule{}, errors.New("expected tool, !tool, tool@repo or !tool@repo; only a complete * wildcard is supported")
 	}
 	if name == "create_deployment" {
@@ -40,6 +43,31 @@ func (p Policy) hasRepositoryToolRules() bool {
 		}
 	}
 	return false
+}
+
+func (p Policy) checkRenameToolRules(from, to string) error {
+	if strings.EqualFold(from, to) {
+		return nil
+	}
+	source, destination := make(map[toolRule]bool), make(map[toolRule]bool)
+	for _, entry := range p.Tools {
+		rule, err := parseToolRule(entry)
+		if err != nil {
+			return fmt.Errorf("invalid server policy: %w", err)
+		}
+		repo := rule.repo
+		rule.repo = ""
+		switch {
+		case strings.EqualFold(repo, from):
+			source[rule] = true
+		case strings.EqualFold(repo, to):
+			destination[rule] = true
+		}
+	}
+	if !maps.Equal(source, destination) {
+		return errors.New("repository rename would change applicable tool rules under the server policy")
+	}
+	return nil
 }
 
 func (p Policy) checkTool(name string, repos []string) error {

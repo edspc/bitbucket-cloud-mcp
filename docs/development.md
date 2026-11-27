@@ -51,6 +51,8 @@ official [OSV-Scanner action](https://github.com/google/osv-scanner-action).
 Actions are pinned by commit, the image by digest and the Snyk CLI by its
 SHA-256, and checkouts keep no credentials. The Snyk job reads the token from the
 repository secret `SNYK_TOKEN`.
+The Release workflow calls Security on the same commit before the version bump,
+tag push and publication. The release job requires both scans to succeed.
 
 Pull requests that change `.github/workflows/release.yml`, `.goreleaser.yaml`,
 README, `docs/` or the check itself also run the Release check workflow
@@ -75,7 +77,7 @@ deleted during cleanup. The tests cover replacement, environment overrides,
 single-field token and policy edits, missing items, read failures, invalid JSON and preservation of existing settings
 when a configuration is too large.
 
-On Linux and macOS, a terminal regression test uses Python 3's standard-library
+On macOS, a terminal regression test uses Python 3's standard-library
 `pty` module to send a fake token as soon as its prompt appears. It checks that
 echo is already disabled and that terminal settings are restored after success
 and Ctrl+C. This test is skipped if Python 3 is unavailable.

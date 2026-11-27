@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -50,6 +51,14 @@ func TestInstalledBinary(t *testing.T) {
 				t.Fatalf("unexpected output: %q", stdout.String())
 			}
 		})
+	}
+	if runtime.GOOS != "darwin" {
+		cmd := exec.CommandContext(ctx, binary, "configure")
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err == nil || stdout.Len() != 0 || !strings.Contains(stderr.String(), "configure requires macOS Keychain") {
+			t.Fatalf("configure on %s: %v, stdout=%q, stderr=%q", runtime.GOOS, err, stdout.String(), stderr.String())
+		}
 	}
 	cmd := exec.CommandContext(ctx, binary)
 	cmd.Env = append(env,

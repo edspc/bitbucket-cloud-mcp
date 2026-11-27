@@ -73,6 +73,9 @@ func newAPIError(method, path string, resp *http.Response) *APIError {
 	if resp.StatusCode == http.StatusTooManyRequests {
 		apiErr.RetryAfter = rateLimitWait(resp.Header, time.Now())
 	}
+	if isWebhookAPIPath(path) {
+		return apiErr // Upstream webhook errors can echo the full target URL.
+	}
 	var payload struct {
 		Error struct {
 			Message string `json:"message"`
@@ -198,7 +201,7 @@ func secretPayload(in any) bool {
 	case Variable:
 		return v.Secured
 	case WebhookWrite:
-		return v.Secret != nil || v.URL != nil && strings.Contains(*v.URL, "?")
+		return v.Secret != nil || v.URL != nil
 	case RunRequest:
 		for _, variable := range v.Variables {
 			if variable.Secured {
@@ -248,22 +251,4 @@ func (c *Client) redirectTarget(ctx context.Context, path string) (*url.URL, err
 		return nil, fmt.Errorf("bitbucket GET %s: expected a redirect within the API, got %d", path, resp.StatusCode)
 	}
 	return target, nil
-}
-
-// list follows Bitbucket's `next` links and returns all values of a paginated collection.
-func list[T any](ctx context.Context, c *Client, path string) ([]T, error) {
-	var all []T
-	for next := APIURL + path + "?pagelen=100"; next != ""; {
-		// Credentials go only to the API host, whatever `next` says.
-		if !inAPI(next) {
-			return nil, fmt.Errorf("bitbucket GET %s: unexpected pagination link outside the API", path)
-		}
-		var page apiPage[T]
-		if err := c.send(ctx, http.MethodGet, next, c.basicAuth, nil, &page); err != nil {
-			return nil, err
-		}
-		all = append(all, page.Values...)
-		next = page.Next
-	}
-	return all, nil
 }

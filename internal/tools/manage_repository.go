@@ -95,6 +95,17 @@ func (t *tools) manageRepository(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 	slug, key, projectUUID := before.Slug, before.Project.Key, before.Project.UUID
 	if in.Slug != "" {
+		if !bitbucket.ValidRepositorySlug(slug) {
+			return nil, manageRepositoryResult{}, errors.New("bitbucket returned no usable source repository slug")
+		}
+		if err = t.policy.checkRenameToolRules(slug, in.Slug); err != nil {
+			return nil, manageRepositoryResult{}, err
+		}
+		if !strings.EqualFold(in.Repo, slug) {
+			if err = t.policy.checkRenameToolRules(in.Repo, in.Slug); err != nil {
+				return nil, manageRepositoryResult{}, err
+			}
+		}
 		slug = in.Slug
 	}
 	update := bitbucket.RepositoryUpdate{Name: in.Slug, Description: in.Description, Language: in.Language}

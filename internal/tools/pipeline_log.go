@@ -24,7 +24,7 @@ const (
 type pipelineLogInput struct {
 	pipelineRef
 	stepsPagination
-	Step      string `json:"step,omitempty" jsonschema:"step name or UUID; when omitted, the first failed step, or else the last step that started"`
+	Step      string `json:"step,omitempty" jsonschema:"step UUID or unique step name; when omitted, the first failed step, or else the last step that started"`
 	TailLines int    `json:"tail_lines,omitempty" jsonschema:"how many last lines of the log to return; 200 when omitted, at most 2000"`
 }
 
@@ -93,14 +93,31 @@ func (t *tools) pipelineLog(ctx context.Context, _ *mcp.CallToolRequest, in pipe
 // pickStep finds the step to read: the one asked for, or else the first failed step, or else
 // the last step that started.
 func pickStep(v pipelineView, want string) (int, error) {
-	names := make([]string, 0, len(v.Steps))
-	for i, s := range v.Steps {
-		if want != "" && (s.UUID == braced(want) || s.Name == want) {
-			return i, nil
-		}
-		names = append(names, stepName(s))
-	}
 	if want != "" {
+		uuid := braced(want)
+		for i, s := range v.Steps {
+			if s.UUID == want || s.UUID == uuid {
+				return i, nil
+			}
+		}
+		var matches []string
+		match := 0
+		for i, s := range v.Steps {
+			if s.Name == want {
+				match = i
+				matches = append(matches, s.UUID)
+			}
+		}
+		if len(matches) == 1 {
+			return match, nil
+		}
+		if len(matches) > 1 {
+			return 0, fmt.Errorf("step name %q is ambiguous in pipeline #%d; use a step UUID: %s", want, v.BuildNumber, strings.Join(matches, ", "))
+		}
+		names := make([]string, 0, len(v.Steps))
+		for _, s := range v.Steps {
+			names = append(names, stepName(s))
+		}
 		return 0, fmt.Errorf("step %q not found in pipeline #%d; its steps: %s", want, v.BuildNumber, strings.Join(names, ", "))
 	}
 	for i, s := range v.Steps {

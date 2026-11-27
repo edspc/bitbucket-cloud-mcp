@@ -1,3 +1,5 @@
+//go:build !ios
+
 package main
 
 import (
@@ -8,14 +10,10 @@ import (
 	"maps"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 )
 
 func configurationLookup() (func(string) (string, bool), error) {
-	if runtime.GOOS != "darwin" {
-		return mergedLookup(nil, os.LookupEnv), nil
-	}
 	return configurationLookupForKeychain("")
 }
 
@@ -112,9 +110,6 @@ func keychainWriteCommand(values map[string]string, keychain string) (string, er
 }
 
 func configure(in io.Reader, out io.Writer) error {
-	if runtime.GOOS != "darwin" {
-		return errors.New("configure requires macOS Keychain")
-	}
 	terminal, ok := in.(*os.File)
 	if !ok {
 		return errors.New("configure requires an interactive terminal")

@@ -12,11 +12,14 @@ func (c *Client) AccessTokensPage(repo string) string {
 	return c.repoWebURL(repo, "admin", "access-tokens")
 }
 
-// CheckTokenAccess probes only read access to repo. The requested permissions choose the
-// endpoint; success does not verify the token type, repository-only scope or actual scopes.
-func (c *Client) CheckTokenAccess(ctx context.Context, repo, token string, permissions []string) error {
+// CheckTokenAccess probes read access to the approved source repository. The requested
+// permissions choose the endpoint; success does not verify the token type or actual scopes.
+func (c *Client) CheckTokenAccess(ctx context.Context, repo string, source Repository, token string, permissions []string) error {
+	if err := c.checkRepositoryIdentity(ctx, repo, source); err != nil {
+		return err
+	}
 	bearer := func(req *http.Request) { req.Header.Set("Authorization", "Bearer "+token) }
-	return c.send(ctx, http.MethodGet, APIURL+c.tokenProbePath(repo, permissions), bearer, nil, nil)
+	return c.sendUnchecked(ctx, http.MethodGet, APIURL+c.tokenProbePath(source.UUID, permissions), bearer, nil, nil)
 }
 
 // tokenProbePath picks a read endpoint of repo that the permissions grant; each write or admin

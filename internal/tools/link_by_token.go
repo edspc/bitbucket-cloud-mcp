@@ -79,11 +79,24 @@ func (t *tools) linkByToken(ctx context.Context, req *mcp.CallToolRequest, in li
 	if err = t.checkPipelines(ctx, in.SourceRepo, in.TargetRepo); err != nil {
 		return nil, linkByTokenResult{}, err
 	}
+	source, err := t.bb.RepositorySettings(ctx, in.SourceRepo)
+	if err != nil {
+		return nil, linkByTokenResult{}, err
+	}
+	target, err := t.bb.RepositorySettings(ctx, in.TargetRepo)
+	if err != nil {
+		return nil, linkByTokenResult{}, err
+	}
 	scope, existing, err := t.variableToSet(ctx, in.place(), in.VariableName, in.Force)
 	if err != nil {
 		return nil, linkByTokenResult{}, err
 	}
-	args, err := variableChangeArguments(in, scope, existing, page)
+	details := struct {
+		linkByTokenInput
+		SourceUUID string `json:"source_repository_uuid"`
+		TargetUUID string `json:"target_repository_uuid"`
+	}{in, source.UUID, target.UUID}
+	args, err := variableChangeArguments(details, scope, existing, page)
 	if err != nil {
 		return nil, linkByTokenResult{}, err
 	}
@@ -115,7 +128,7 @@ func (t *tools) linkByToken(ctx context.Context, req *mcp.CallToolRequest, in li
 	checkCtx, cancel := context.WithDeadline(ctx, page.page.info.Until)
 	defer cancel()
 	token := values[tokenField]
-	if err = t.bb.CheckTokenAccess(checkCtx, in.SourceRepo, token, in.Permissions); err != nil {
+	if err = t.bb.CheckTokenAccess(checkCtx, in.SourceRepo, source, token, in.Permissions); err != nil {
 		if bitbucket.IsStatus(err, http.StatusUnauthorized) {
 			return nil, linkByTokenResult{}, errors.New("bitbucket rejected the provided token as invalid; nothing changed")
 		}
@@ -130,16 +143,14 @@ func (t *tools) linkByToken(ctx context.Context, req *mcp.CallToolRequest, in li
 	if err != nil {
 		return nil, linkByTokenResult{}, err
 	}
-	if _, err = variableChangeArguments(in, scope, existing, page); err != nil {
-		return nil, linkByTokenResult{}, err
-	}
-	if err = t.bb.CheckRepositoryProject(checkCtx, in.SourceRepo); err != nil {
+	if _, err = variableChangeArguments(details, scope, existing, page); err != nil {
 		return nil, linkByTokenResult{}, err
 	}
 	if err = approvalLive(page); err != nil {
 		return nil, linkByTokenResult{}, err
 	}
-	status, err := t.putVariable(bitbucket.WithWriteDeadline(ctx, page.page.info.Until), scope, existing, bitbucket.Variable{Key: in.VariableName, Value: token, Secured: true})
+	variable := bitbucket.Variable{Key: in.VariableName, Value: token, Secured: true}
+	status, err := t.bb.WriteLinkedVariable(bitbucket.WithWriteDeadline(ctx, page.page.info.Until), in.SourceRepo, source, target, scope, variable, existing)
 	if err != nil {
 		return nil, linkByTokenResult{}, err
 	}

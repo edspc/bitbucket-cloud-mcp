@@ -1,3 +1,5 @@
+//go:build darwin && !ios
+
 package main
 
 import (
@@ -61,6 +63,18 @@ func TestInvalidSavedConfiguration(t *testing.T) {
 		if _, err := validateConfiguration(values); err == nil {
 			t.Fatal("accepted invalid configuration")
 		}
+	}
+}
+
+func TestKeychainRejectsInvalidToolRules(t *testing.T) {
+	for _, rule := range invalidToolRules() {
+		t.Run(rule, func(t *testing.T) {
+			values := testConfiguration()
+			values["BITBUCKET_ALLOWED_TOOLS"] = `["` + rule + `"]`
+			if _, err := validateConfiguration(values); err == nil {
+				t.Fatal("malformed tool rule accepted for Keychain")
+			}
+		})
 	}
 }
 

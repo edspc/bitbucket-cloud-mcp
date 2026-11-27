@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	testEmail = "dev@example.com"
-	testToken = "api-secret"
+	testEmail    = "dev@example.com"
+	testToken    = "api-secret"
+	testRepoUUID = "{aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa}"
 )
 
 // handlerTransport serves requests in-process, so tests need no network listener.
@@ -49,6 +50,19 @@ func TestCredentialsOnlyInAuthorizationHeader(t *testing.T) {
 	}
 }
 
+func TestValidRepositorySlug(t *testing.T) {
+	for _, slug := range []string{"repo", "Team.Repo_42", "-"} {
+		if !ValidRepositorySlug(slug) {
+			t.Errorf("rejected slug %q", slug)
+		}
+	}
+	for _, slug := range []string{"", ".", "..", "ws/repo", "ws%2Frepo", "repo@rule", "repo?query", "repo name", "répo"} {
+		if ValidRepositorySlug(slug) {
+			t.Errorf("accepted invalid slug %q", slug)
+		}
+	}
+}
+
 func TestAPIErrorKeepsOnlyMessage(t *testing.T) {
 	c := newTestClient(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -82,7 +96,7 @@ func TestListFollowsNext(t *testing.T) {
 
 func TestListRefusesForeignNext(t *testing.T) {
 	c := newTestClient(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = fmt.Fprint(w, `{"values": [], "next": "https://evil.example/2.0/steal"}`)
+		_, _ = fmt.Fprint(w, `{"values": [{}], "next": "https://evil.example/2.0/steal"}`)
 	})
 	if _, err := c.ListDeployKeys(context.Background(), "repo-b"); err == nil {
 		t.Fatal("want error for a pagination link outside the API")
@@ -121,14 +135,18 @@ func TestCheckTokenAccess(t *testing.T) {
 		permissions []string
 		path        string
 	}{
-		{[]string{"pipeline", "repository"}, "/2.0/repositories/ws/repo-a"},
-		{[]string{"pullrequest:write"}, "/2.0/repositories/ws/repo-a"},
-		{[]string{"webhook", "pipeline:variable"}, "/2.0/repositories/ws/repo-a/pipelines"},
-		{[]string{"webhook"}, "/2.0/repositories/ws/repo-a/hooks"},
+		{[]string{"pipeline", "repository"}, "/2.0/repositories/ws/" + testRepoUUID},
+		{[]string{"pullrequest:write"}, "/2.0/repositories/ws/" + testRepoUUID},
+		{[]string{"webhook", "pipeline:variable"}, "/2.0/repositories/ws/" + testRepoUUID + "/pipelines"},
+		{[]string{"webhook"}, "/2.0/repositories/ws/" + testRepoUUID + "/hooks"},
 	} {
 		for _, status := range []int{http.StatusOK, http.StatusForbidden, http.StatusUnauthorized} {
 			t.Run(fmt.Sprintf("%v %d", tc.permissions, status), func(t *testing.T) {
 				c := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == "/2.0/repositories/ws/repo-a" && r.URL.Query().Has("fields") {
+						_, _ = fmt.Fprintf(w, `{"uuid": %q}`, testRepoUUID)
+						return
+					}
 					if got := r.Header.Get("Authorization"); got != "Bearer repo-token" {
 						t.Errorf("Authorization = %q", got)
 					}
@@ -137,7 +155,7 @@ func TestCheckTokenAccess(t *testing.T) {
 					}
 					w.WriteHeader(status)
 				})
-				err := c.CheckTokenAccess(context.Background(), "repo-a", "repo-token", tc.permissions)
+				err := c.CheckTokenAccess(context.Background(), "repo-a", Repository{UUID: testRepoUUID}, "repo-token", tc.permissions)
 				if (err != nil) != (status != http.StatusOK) {
 					t.Fatalf("err = %v", err)
 				}

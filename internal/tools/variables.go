@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -86,18 +85,6 @@ func (t *tools) variableScope(ctx context.Context, p variablePlace) (bitbucket.V
 		p.Environment, p.Repo, strings.Join(names, ", "))
 }
 
-// findVariable returns the variable called name in scope, or nil.
-func (t *tools) findVariable(ctx context.Context, scope bitbucket.VariableScope, name string) (*bitbucket.Variable, error) {
-	vars, err := t.bb.ListVariables(ctx, scope)
-	if err != nil {
-		return nil, err
-	}
-	if i := slices.IndexFunc(vars, func(v bitbucket.Variable) bool { return v.Key == name }); i >= 0 {
-		return &vars[i], nil
-	}
-	return nil, nil
-}
-
 // variableToSet finds the scope of place and the variable called name in it, if any, and
 // refuses to overwrite that variable unless force is set.
 func (t *tools) variableToSet(ctx context.Context, place variablePlace, name string, force bool) (bitbucket.VariableScope, *bitbucket.Variable, error) {
@@ -105,7 +92,7 @@ func (t *tools) variableToSet(ctx context.Context, place variablePlace, name str
 	if err != nil {
 		return scope, nil, err
 	}
-	existing, err := t.findVariable(ctx, scope, name)
+	existing, err := t.bb.FindVariable(ctx, scope, name)
 	if err != nil {
 		return scope, nil, err
 	}
@@ -330,7 +317,7 @@ func (t *tools) deleteVariable(ctx context.Context, req *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, statusResult{}, err
 	}
-	existing, err := t.findVariable(ctx, scope, in.Name)
+	existing, err := t.bb.FindVariable(ctx, scope, in.Name)
 	if err != nil {
 		return nil, statusResult{}, err
 	}

@@ -103,7 +103,7 @@ func TestProjectsProtectGETRedirectsAndPagination(t *testing.T) {
 					return
 				}
 				requests++
-				_, _ = fmt.Fprint(w, `{"values":[],"next":"https://api.bitbucket.org/2.0/repositories/ws/repo-b/deploy-keys?page=2"}`)
+				_, _ = fmt.Fprint(w, `{"values":[{}],"next":"https://api.bitbucket.org/2.0/repositories/ws/repo-b/deploy-keys?page=2"}`)
 			}).WithAllowedProjects([]string{"APP"}, nil)
 			var err error
 			switch kind {
@@ -118,17 +118,19 @@ func TestProjectsProtectGETRedirectsAndPagination(t *testing.T) {
 			case "foreign workspace":
 				err = c.call(t.Context(), http.MethodGet, "/repositories/other/repo-a/commit/abcdefabcdef", nil, nil)
 			case "workspace variables":
-				_, err = c.ListVariables(t.Context(), VariableScope{})
+				_, err = c.FindVariable(t.Context(), VariableScope{}, "KEY")
 			case "dot segment":
 				err = c.call(t.Context(), http.MethodGet, "/repositories/ws/repo-a/../repo-b/deploy-keys", nil, nil)
 			case "encoded dot segment":
 				err = c.call(t.Context(), http.MethodGet, "/repositories/ws/repo-a/%2e%2e/repo-b/deploy-keys", nil, nil)
 			}
 			want := 0
+			message := "server policy"
 			if kind == "pagination" {
 				want = 1
+				message = "requested Bitbucket collection"
 			}
-			if err == nil || !strings.Contains(err.Error(), "server policy") || requests != want {
+			if err == nil || !strings.Contains(err.Error(), message) || requests != want {
 				t.Fatalf("err=%v requests=%d want=%d", err, requests, want)
 			}
 		})
@@ -143,15 +145,31 @@ func TestProjectCheckUsesServerCredentialsBeforeTokenProbe(t *testing.T) {
 			if user, token, ok := r.BasicAuth(); !ok || user != testEmail || token != testToken {
 				t.Fatal("project lookup did not use server credentials")
 			}
-			_, _ = fmt.Fprint(w, `{"project":{"key":"APP"}}`)
+			_, _ = fmt.Fprintf(w, `{"uuid":%q,"project":{"key":"APP"}}`, testRepoUUID)
 			return
 		}
 		if r.Header.Get("Authorization") != "Bearer provided-token" {
 			t.Fatal("probe did not use supplied token")
 		}
 	}).WithAllowedProjects([]string{"APP"}, nil)
-	if err := c.CheckTokenAccess(t.Context(), "repo-a", "provided-token", []string{"repository"}); err != nil || requests != 2 {
+	source := Repository{UUID: testRepoUUID}
+	source.Project.Key = "APP"
+	if err := c.CheckTokenAccess(t.Context(), "repo-a", source, "provided-token", []string{"repository"}); err != nil || requests != 3 {
 		t.Fatalf("err=%v requests=%d", err, requests)
+	}
+}
+
+func TestRepositorySettingsRejectsProjectChangedAfterPreflight(t *testing.T) {
+	c := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("fields") == "project.key,project.uuid" {
+			_, _ = fmt.Fprint(w, `{"project":{"key":"APP"}}`)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"uuid":%q,"description":"restricted","project":{"key":"OPS"}}`, testRepoUUID)
+	}).WithAllowedProjects([]string{"APP"}, nil)
+	repo, err := c.RepositorySettings(t.Context(), "repo-a")
+	if err == nil || !strings.Contains(err.Error(), "server policy") || repo != (Repository{}) {
+		t.Fatalf("returned settings for a repository outside the allowed project: %+v, %v", repo, err)
 	}
 }
 

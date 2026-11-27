@@ -113,6 +113,28 @@ func TestWatchLogOptionsAndStepSelection(t *testing.T) {
 	}
 }
 
+func TestWatchLogRejectsAmbiguousStepName(t *testing.T) {
+	f := newFake()
+	f.addRun("repo-a", completed("SUCCESSFUL"),
+		bitbucket.Step{UUID: "{first}", Name: "Build", State: completed("SUCCESSFUL"), StartedOn: "t1"},
+		bitbucket.Step{UUID: "{second}", Name: "Build", State: completed("SUCCESSFUL"), StartedOn: "t2"},
+	)
+	cs := connect(t, f, nil)
+	params := &mcp.CallToolParams{Name: "watch_pipeline", Arguments: map[string]any{
+		"repo": "repo-a", "pipeline": "1", "stream_logs": true, "step": "Build",
+	}}
+	params.SetProgressToken(1)
+	res, err := cs.CallTool(t.Context(), params)
+	if err != nil || !res.IsError || !strings.Contains(res.Content[0].(*mcp.TextContent).Text, "use a step UUID: {first}, {second}") {
+		t.Fatalf("watch result: %+v, %v", res, err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.logRanges) != 0 {
+		t.Fatalf("ambiguous step triggered log reads: %v", f.logRanges)
+	}
+}
+
 func TestWatchLogUnavailableAndRetry(t *testing.T) {
 	for _, available := range []bool{false, true} {
 		t.Run(map[bool]string{false: "missing", true: "later available"}[available], func(t *testing.T) {

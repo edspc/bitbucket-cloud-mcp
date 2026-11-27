@@ -13,7 +13,10 @@ import (
 func TestManageRepositoryUpdatesRequestedFields(t *testing.T) {
 	const uuid = "{01234567-89ab-cdef-0123-456789abcdef}"
 	var payload map[string]any
-	cs := connectUUID(t, Policy{ConfirmationTools: []string{"delete_variable"}}, func(w http.ResponseWriter, r *http.Request) {
+	cs := connectUUID(t, Policy{
+		ConfirmationTools: []string{"delete_variable"},
+		Tools:             []string{"*", "!run_pipeline@repo-a", "!run_pipeline@new-slug"},
+	}, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/2.0/repositories/ws/repo-a":
 			writeJSON(w, map[string]any{"uuid": uuid, "slug": "repo-a", "project": map[string]string{"key": "OLD", "uuid": "{old}"}})
@@ -48,6 +51,31 @@ func TestManageRepositoryPreventsUnapprovedOrOutOfPolicyUpdates(t *testing.T) {
 		if !failed {
 			t.Fatalf("unexpected update: %s", out)
 		}
+	}
+}
+
+func TestManageRepositoryPreservesScopedToolRulesOnRename(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		rules []string
+	}{
+		{"source deny", []string{"*", "!run_pipeline@REPO-A"}},
+		{"destination allow", []string{"manage_repository", "run_pipeline@new-slug"}},
+		{"destination deny", []string{"*", "!manage_repository@new-slug"}},
+		{"source wildcard", []string{"*@repo-a"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cs := connectUUID(t, Policy{Tools: tc.rules, ConfirmationTools: []string{"delete_variable"}}, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/2.0/repositories/ws/repo-a" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL)
+				}
+				writeJSON(w, map[string]string{"uuid": fakeSourceUUID, "slug": "repo-a"})
+			})
+			out, failed := call(t, cs, "manage_repository", map[string]any{"repo": "repo-a", "slug": "new-slug"})
+			if !failed || !strings.Contains(out, "rename would change applicable tool rules") {
+				t.Fatalf("rename result = %s, error = %v", out, failed)
+			}
+		})
 	}
 }
 

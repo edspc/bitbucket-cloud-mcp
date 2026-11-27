@@ -111,7 +111,7 @@ func TestHistoryRejectsChangedCursorsBeforeUse(t *testing.T) {
 		valid + "&include=other", valid + "&exclude=main", valid + "&renames=true", valid + "&sort=date",
 		valid + "&q=other", valid + "&fields=values.hash", valid + "#fragment", valid + "&ctx=%ZZ",
 		"/2.0/repositories/ws/repo-a/commits/main?pagelen=1&path=file&page=opaque",
-		valid + "&ctx=" + strings.Repeat("x", maxHistoryCursorBytes),
+		valid + "&ctx=" + strings.Repeat("x", maxPaginationCursorBytes),
 	} {
 		for _, fromResponse := range []bool{false, true} {
 			requests := 0

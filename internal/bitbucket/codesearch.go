@@ -86,7 +86,7 @@ func (c *Client) SearchCode(ctx context.Context, repo string, in CodeSearchReque
 	}
 	var scope []string
 	if repo != "" {
-		if !validCodeRepository(repo) {
+		if !ValidRepositorySlug(repo) {
 			return out, errors.New("repo must be a repository slug, without path segments")
 		}
 		if c.allowedProjects == nil && c.allowedRepos != nil && !slices.Contains(c.allowedRepos, repo) {
@@ -131,7 +131,7 @@ func (c *Client) SearchCode(ctx context.Context, repo string, in CodeSearchReque
 			return CodeSearchResult{}, errors.New("code search returned a file outside the requested workspace or repository")
 		}
 		slug := parts[1]
-		if !validCodeRepository(slug) || scope != nil && !slices.Contains(scope, slug) {
+		if !ValidRepositorySlug(slug) || scope != nil && !slices.Contains(scope, slug) {
 			return CodeSearchResult{}, errors.New("code search returned a repository outside the server policy")
 		}
 		if !checked[slug] {

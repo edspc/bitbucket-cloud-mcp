@@ -2,8 +2,10 @@ package bitbucket
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 )
 
@@ -37,8 +39,15 @@ func (c *Client) variablesPath(s VariableScope, parts ...string) string {
 	return c.repoPath(s.Repo, append([]string{"deployments_config", "environments", s.EnvironmentUUID, "variables"}, parts...)...)
 }
 
-func (c *Client) ListVariables(ctx context.Context, s VariableScope) ([]Variable, error) {
-	return list[Variable](ctx, c, c.variablesPath(s))
+func (c *Client) FindVariable(ctx context.Context, s VariableScope, key string) (*Variable, error) {
+	var found *Variable
+	err := walkPages(ctx, c, c.variablesPath(s), func(values []Variable) bool {
+		if i := slices.IndexFunc(values, func(v Variable) bool { return v.Key == key }); i >= 0 {
+			found = &values[i]
+		}
+		return found == nil
+	})
+	return found, err
 }
 
 func (c *Client) ListVariablesPage(ctx context.Context, s VariableScope, page, limit int) (Page[Variable], error) {
@@ -53,6 +62,31 @@ func (c *Client) CreateVariable(ctx context.Context, s VariableScope, v Variable
 
 func (c *Client) UpdateVariable(ctx context.Context, s VariableScope, v Variable) error {
 	return c.call(ctx, http.MethodPut, c.variablesPath(s, v.UUID), v, nil)
+}
+
+// WriteLinkedVariable reauthorizes both repositories before writing the token to the approved
+// target UUID. A new repository taking over the target slug cannot receive the token.
+func (c *Client) WriteLinkedVariable(ctx context.Context, sourceRepo string, source, target Repository, s VariableScope, v Variable, existing *Variable) (string, error) {
+	checkCtx, cancel := repositoryCheckContext(ctx)
+	defer cancel()
+	if err := c.checkRepositoryIdentity(checkCtx, sourceRepo, source); err != nil {
+		return "", err
+	}
+	if err := c.checkRepositoryIdentity(checkCtx, s.Repo, target); err != nil {
+		return "", err
+	}
+	if err := checkCtx.Err(); err != nil {
+		return "", err
+	}
+	s.Repo = target.UUID
+	if existing == nil {
+		return "created", c.sendUnchecked(ctx, http.MethodPost, APIURL+c.variablesPath(s), c.basicAuth, v, nil)
+	}
+	if existing.UUID == "" {
+		return "", errors.New("bitbucket returned no UUID for the variable to replace")
+	}
+	v.UUID = existing.UUID
+	return "updated", c.sendUnchecked(ctx, http.MethodPut, APIURL+c.variablesPath(s, v.UUID), c.basicAuth, v, nil)
 }
 
 func (c *Client) DeleteVariable(ctx context.Context, s VariableScope, uuid string) error {

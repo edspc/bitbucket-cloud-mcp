@@ -118,20 +118,19 @@ func TestToolRulesConfiguration(t *testing.T) {
 			t.Fatalf("valid tool rules rejected: %s, %v", value, err)
 		}
 	}
-	for _, rule := range []string{"!", "!!get_pipeline", "get_*", "get_pipeline@", "@repo-a", "get_pipeline@../repo-a", "get_pipeline@repo/a", "get_pipeline@..", "get_pipeline@*", "get_pipeline@repo-a@repo-b", "get_pipeline@ repo-a", "! get_pipeline"} {
+	for _, rule := range invalidToolRules() {
 		t.Run(rule, func(t *testing.T) {
-			values := testConfiguration()
-			values["BITBUCKET_ALLOWED_TOOLS"] = `["` + rule + `"]`
-			if _, err := validateConfiguration(values); err == nil {
-				t.Fatal("malformed tool rule accepted for Keychain")
-			}
 			clearPolicyEnv(t)
-			t.Setenv("BITBUCKET_ALLOWED_TOOLS", values["BITBUCKET_ALLOWED_TOOLS"])
+			t.Setenv("BITBUCKET_ALLOWED_TOOLS", `["`+rule+`"]`)
 			if _, err := policyFromEnv(); err == nil {
 				t.Fatal("malformed tool rule accepted from environment")
 			}
 		})
 	}
+}
+
+func invalidToolRules() []string {
+	return []string{"!", "!!get_pipeline", "get_*", "get_pipeline@", "@repo-a", "get_pipeline@../repo-a", "get_pipeline@repo/a", "get_pipeline@..", "get_pipeline@*", "get_pipeline@repo-a@repo-b", "get_pipeline@ repo-a", "! get_pipeline"}
 }
 
 func TestReadOnlyEnvironment(t *testing.T) {
