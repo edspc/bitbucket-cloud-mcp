@@ -2,64 +2,64 @@
 
 ## Untrusted repository content
 
-PR titles/descriptions, diffs, pipeline logs, variable values and other Bitbucket
-content are untrusted data. Read results label external content with
-`content_trust: "untrusted"`; neither that content nor tool annotations authorize
-a write. For tools requiring browser confirmation, a prompt injection in this data
-cannot replace that submission. Tools excluded from confirmation can execute
-without user review; configure that list only in the operator environment. Clients must still treat external content as data, and must not
-automatically confirm operations based on instructions in it.
+Treat Bitbucket content as data, including source, diffs, PR comments, pipeline
+logs and variable values. Read results mark this content with
+`content_trust: "untrusted"`. Content and tool annotations cannot approve
+a write. Configure exceptions to browser confirmation only through
+[operator policy](configuration.md#confirmation-and-access-limits).
 
-The MCP client, browser and local machine are trusted. Do not give an untrusted
-model arbitrary local execution or HTTP access to the approval pages: a process
-with that access can impersonate a browser submission. This server's approval
-barrier does not make a model immune to prompt injection or protect unrelated
-tools provided by the client.
+The MCP client, browser and local machine are trusted. Keep untrusted models
+away from local execution and HTTP access to approval pages. A process with
+that access can impersonate a browser submission.
 
-For requests containing secured values or a supplied bearer token, API,
-transport and decoding errors withhold upstream details that could reflect a
-secret. HTTP status, operation and rate-limit advice remain available. This
-protects the secret input/error path; pipeline code is still responsible for
-not exposing secrets in its own output.
+Requests with a secured value or supplied bearer token withhold upstream
+error details that could echo the secret. HTTP status and rate-limit advice
+remain available. Pipelines can still expose values in their own log output.
 
 ## Secret page
 
-Secrets — access tokens and values of secured variables — never pass through
-the MCP client or the model, and tools refuse them as arguments. For the
-duration of the call the server opens a one-off local page on `127.0.0.1`
-(random port, unguessable path) and asks the MCP client, through URL-mode
-elicitation, to send the user there. The page names the tool and says what is
-needed from the user; for an access token it also links to the page where the
-token is created. What the user enters goes from the browser straight to this
-server, which uses it and does not return it. Spaces around each value are
-removed.
+The server opens a one-time page on `127.0.0.1` with a random port and
+unguessable path. The page shows the workspace, operation and arguments.
+Review them, enter any requested secrets, and submit the approval checkbox.
+The browser sends tokens, signing secrets and secured variable values directly
+to the server. Leading and trailing whitespace is trimmed.
 
-The page belongs to the tab that opens it first: the server sends that tab on
-to the page under a key only it learns, so opening the link again, in another
-tab or browser, shows no form and cannot submit one. Use the tab that opened;
-if the page says it was opened elsewhere and that was not you, decline the
-request in the MCP client: a local process that read the URL, from the
-browser's command line for one, got there first. After the values arrive the
-page only shows that they did, so reloading it sends nothing again.
+By default the MCP client opens the page using URL elicitation, which requires
+MCP 2025-11-25 or later. Opening the page or accepting the MCP prompt only
+starts the review. The write requires the form submission. Use
+[local-browser mode](#local-browser-mode) if the client lacks URL elicitation.
 
-The page stops taking values as soon as they arrive, when the user declines,
-when the call ends, or after 10 minutes; a tab left open says so on reload,
-and the form reloads by itself when the 10 minutes are up. At most 3 pages
-take values at a time. Its port stays bound until a minute after those 10
-minutes, even when the page closes sooner, so a tab left open reaches this
-server, which refuses the values, and not another local process that took
-over a released port. At most 32 listeners, including those retained for closed
-pages, can exist at once; reaching that limit refuses new pages until a listener
-retires. The MCP client must support URL elicitation (MCP
-2025-11-25 or later), unless local-browser mode is enabled.
+The first tab to open the link owns the form. Use that tab to submit it.
+If the server reports another tab opened it and you did not open one, decline
+the call. Once the form is submitted, reloading the tab only shows that the
+server received it.
+
+Approval is tied to the tool, arguments and MCP session. The page closes after
+submission, cancellation, completion of the call or 10 minutes. Retry the tool
+for a fresh page after expiration. At most three pages can accept input at once.
+A closed page retains its local listener until one minute after the original
+expiration so a stale tab still reaches this server. The server allows up to
+32 listeners, including retained ones.
+
+### What approval binds
+
+Before a write, the server rechecks the relevant destination and access.
+A pipeline run binds the full commit SHA. The approval shows plain variable
+values and the names of secured variables. A schedule authorizes future runs of
+a branch whose head can move. Variable approvals bind the resolved deployment
+UUID and, when replacing a variable, its UUID and secured flag. Token links
+also bind the source and target repository UUIDs. A changed target or candidate
+requires a fresh approval.
+
+Repository settings, branch rule and webhook writes address the approved
+repository UUID. Key links recheck the pipeline public key and target access
+keys. Schedule deletions recheck the selected schedule. Project authorization
+checks must finish within the approval deadline. A write already sent to
+Bitbucket can finish after that deadline.
 
 ## Local-browser mode
 
-With `BITBUCKET_LOCAL_BROWSER=true`, the local MCP server opens its page in the
-system browser itself. It does not send a URL-elicitation request to the client,
-so a client without that UI can still use confirmation and secret entry.
-This is an operator setting, not a tool argument. The tool call waits for the
-same explicit browser approval; opening the browser does not authorize a write.
-The server keeps the page bound to the session and arguments, rechecks the
-destination before writing, and closes it on timeout or call cancellation.
-Client URL-elicitation refusals remain cancellations in the default mode.
+With [`BITBUCKET_LOCAL_BROWSER=true`](configuration.md#local-system-browser),
+the server opens the approval page directly in the system browser. The tool
+waits for the same explicit form submission. The session binding and timeout
+apply in both modes.

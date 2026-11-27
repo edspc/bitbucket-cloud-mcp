@@ -1,83 +1,60 @@
 # Development
 
-Run the commands below from the repository root.
+Run commands from the repository root with the Go version in [`go.mod`](../go.mod)
+or later. The server uses [modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk)
+for MCP.
 
-## Stack
+| Task | Command |
+| --- | --- |
+| Run from source | `go run ./cmd/server` |
+| Build the executable | `make build` writes `bin/bitbucket-cloud-mcp` |
+| Lint | `make lint` |
+| Race tests | `make test` |
+| Executable smoke test | `make smoke` starts the server and lists tools offline |
+| Snyk | `make snyk` scans dependencies and code |
+| OSV | `make osv` scans module versions and the Go runtime linked into the executable |
 
-- Go
-- [modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk)
-- `log/slog` to stderr — stdout carries the MCP protocol
+See the [installation guide](../README.md#build-from-source) for `make install`,
+[Releases](releases.md#build-locally) for release builds and the
+[change lifecycle](../.agents/rules/lifecycle.md) for pre-commit checks.
 
-## Running commands
+## Check prerequisites
 
-| Task    | Command                                                    |
-|---------|------------------------------------------------------------|
-| Run     | `go run ./cmd/server`                                      |
-| Build   | `make build` — binary in `bin/`                            |
-| Install | `make install` — copies it to `~/.local/bin` (override with `BINDIR=…`) |
-| Lint    | `make lint` (`golangci-lint run ./...`)                    |
-| Tests   | `make test` (`go test -race ./...`)                        |
-| Smoke test | `make smoke` — builds and starts the executable, initializes MCP and lists tools without contacting Bitbucket |
-| Release binaries | `make release` — packages the clean tagged commit with GoReleaser into `dist/` |
-| Snapshot binaries | `make release-snapshot` — builds local binaries without publishing |
-| Snyk    | `make snyk` (`snyk test`, `snyk code test`)                |
-| OSV     | `make osv` (OSV-Scanner on `go.mod` and the built server)  |
+Install the versions of golangci-lint and OSV-Scanner used by CI and put
+`$(go env GOPATH)/bin` on `PATH`.
 
-`make lint` needs [golangci-lint](https://golangci-lint.run/) built with the Go
-of `go.mod` or later, which a build with an older Go refuses:
-`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0`,
-with `$(go env GOPATH)/bin` on `PATH`.
+```sh
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
+```
 
-`make snyk` needs the [Snyk CLI](https://docs.snyk.io/snyk-cli), for example
-the [standalone binary](https://docs.snyk.io/snyk-cli/install-or-update-the-snyk-cli),
-signed in with `snyk auth` or given a token in
-`SNYK_TOKEN`; Snyk Code must be enabled in the Snyk organization.
+Use the repository's Go version or later to build golangci-lint.
+For `make snyk`, install the
+[Snyk CLI](https://docs.snyk.io/snyk-cli/install-or-update-the-snyk-cli)
+and authenticate with `snyk auth` or `SNYK_TOKEN`. Enable Snyk Code in the
+organization. OSV checks all known vulnerabilities in the modules and built
+server, including unreachable code.
 
-`make osv` needs [OSV-Scanner](https://google.github.io/osv-scanner/):
-`go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0`, with
-`$(go env GOPATH)/bin` on `PATH`. It scans `go.mod` for the module versions
-and the server built by `make build` for the Go standard library it was
-built with, which OSV-Scanner does not take from `go.mod`. Every known
-vulnerability fails it, whether the code reaches it or not.
+## Continuous integration
 
-GitHub Actions run on pushes to `main` and on pull requests: `make lint` and
-`make test` as separate jobs of the CI workflow (`.github/workflows/ci.yml`).
-Tests, including the executable smoke test, run on Linux, macOS Apple Silicon
-and macOS Intel. Both security scans run
-in the Security workflow (`.github/workflows/security.yml`):
-the `snyk` job runs `make snyk` with the standalone Snyk CLI, and the
-`osv-scanner` job runs the scans of `make osv` with the scanner image of the
-official [OSV-Scanner action](https://github.com/google/osv-scanner-action).
-Actions are pinned by commit, the image by digest and the Snyk CLI by its
-SHA-256, and checkouts keep no credentials. The Snyk job reads the token from the
-repository secret `SNYK_TOKEN`.
-The Release workflow calls Security on the same commit before the version bump,
-tag push and publication. The release job requires both scans to succeed.
+[CI](../.github/workflows/ci.yml) runs separate lint and race test jobs
+on pushes to `main` and on pull requests. The test matrix covers Linux
+and macOS on Apple Silicon and Intel.
 
-Pull requests that change `.github/workflows/release.yml`, `.goreleaser.yaml`,
-README, `docs/` or the check itself also run the Release check workflow
-(`.github/workflows/release-check.yml`). Without committing or publishing, it
-builds snapshot binaries with GoReleaser, which runs the release hook, checks
-the release assets and license notices with the pinned `check-binaries` action,
-and raises the version with the pinned bump action. Both checks and the collection
-of license notices run in Go through go-release-actions.
-It first checks that its GoReleaser and bump steps match those of the Release
-workflow, and that the hook uses the same go-release-actions commit.
+[Security](../.github/workflows/security.yml) runs Snyk and OSV. It pins
+actions by commit, the scanner image by digest and the Snyk CLI by checksum.
+The Snyk job uses the repository's `SNYK_TOKEN` secret.
 
-## Change workflow
-
-See [.agents/rules/lifecycle.md](../.agents/rules/lifecycle.md).
+[Release check](../.github/workflows/release-check.yml) runs on pull requests
+that change release packaging, README or documentation. It builds snapshot
+binaries, checks release assets and license notices, and exercises the version
+bump. It checks that the release and dry run use matching tool pins.
 
 ## Keychain and terminal tests
 
-On macOS, `make test` exercises saving and loading through the real `security`
-utility using temporary Keychains. These tests do not change the default
-Keychain or store credentials in the login Keychain. Temporary Keychains are
-deleted during cleanup. The tests cover replacement, environment overrides,
-single-field token and policy edits, missing items, read failures, invalid JSON and preservation of existing settings
-when a configuration is too large.
-
-On macOS, a terminal regression test uses Python 3's standard-library
-`pty` module to send a fake token as soon as its prompt appears. It checks that
-echo is already disabled and that terminal settings are restored after success
-and Ctrl+C. This test is skipped if Python 3 is unavailable.
+On macOS, the tests use temporary Keychains and delete them during cleanup.
+They cover saving and editing settings, environment overrides, and read
+failures, including preservation of the saved item after an oversized edit.
+The terminal regression test uses Python 3's `pty` module to verify that
+token input is hidden and terminal settings are restored after submission
+or Ctrl+C. It skips when Python 3 is unavailable.

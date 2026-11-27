@@ -1,255 +1,156 @@
 # Configuration
 
-Configuration comes from environment variables or macOS Keychain. Environment
-variables take precedence, including explicitly empty values. On macOS, a missing
-Keychain item falls back to environment-only configuration; other Keychain errors
-stop startup so saved access restrictions cannot silently disappear. On Linux,
-configuration continues to come from the environment. The Bitbucket token is a
-secret that reaches every repository its account can, so only this server's
-process should get it: use Keychain as described below or a secret manager that
-resolves a reference at launch, such as 1Password's `op run` (see
-[Setup in Claude Code](claude-code.md)). Do not export the token in a
-shell profile, which `"${VAR}"` in the MCP client's `env` needs: the client
-passes its environment to every MCP server, hook and shell command it starts,
-so other servers and any command a prompt injection gets run could read it.
-Do not write the token itself into any config either, `~/.claude.json`
-included: every process of the user can read it.
+Set these values in the server's environment or in [macOS Keychain](#macos-keychain-setup).
 
-| Variable              | Value                                              |
-|-----------------------|----------------------------------------------------|
-| `BITBUCKET_WORKSPACE` | Workspace slug; every repository the tools work with is in it |
-| `BITBUCKET_EMAIL`     | Atlassian account email                            |
-| `BITBUCKET_API_TOKEN` | Atlassian API token for Bitbucket (Basic auth)     |
+| Variable | Value |
+| --- | --- |
+| `BITBUCKET_WORKSPACE` | Bitbucket workspace slug |
+| `BITBUCKET_EMAIL` | Atlassian account email |
+| `BITBUCKET_API_TOKEN` | Atlassian API token for Bitbucket Basic authentication |
 
-The API token needs these scopes: `read:repository:bitbucket`,
-`admin:repository:bitbucket`, `write:ssh-key:bitbucket`,
-`delete:ssh-key:bitbucket`, `read:pipeline:bitbucket`,
-`write:pipeline:bitbucket`, `admin:pipeline:bitbucket`,
-`read:pullrequest:bitbucket`.
+Environment variables override saved values, including explicitly empty values.
+On macOS, a missing Keychain item falls back to the environment. Other Keychain
+read errors stop startup to preserve access restrictions. Linux uses the
+environment.
 
-`list_pull_request_comments` uses the same `read:pullrequest:bitbucket` scope as
-the existing PR tools. If `BITBUCKET_ALLOWED_TOOLS` is an explicit allowlist,
-include the new tool name (or a repository-specific rule) to enable comment reads.
+Provide the token only to this MCP server, using Keychain or a secret manager
+that resolves it at launch. Avoid storing the token in client configuration
+or exporting it from a shell profile shared by the MCP client. The
+[Claude Code setup](claude-code.md) shows how to use a 1Password reference.
 
-`create_pull_request_comment` creates comments and replies using that same
-`read:pullrequest:bitbucket` scope: Bitbucket's PR read permission includes
-commenting. See [Atlassian's permission reference](https://support.atlassian.com/bitbucket-cloud/docs/api-token-permissions/).
-Explicit tool allowlists must include `create_pull_request_comment` (or a
-repository-specific rule). It requires browser confirmation by default, like
-other write tools; an explicit `BITBUCKET_CONFIRM_TOOLS` list overrides that default.
+## API token scopes
 
-`search_code` additionally requires `read:workspace:bitbucket` (alongside
-`read:repository:bitbucket`). It uses the configured account's repository access;
-server repository/project and tool allowlists further restrict it.
+Select the scopes for the tools you enable. The table lists the scopes used by
+the dedicated tools, including preflight reads. The optional API proxy uses
+the scopes required by the requested endpoint.
 
-User lookups with `get_uuid` additionally require `read:user:bitbucket`.
-`manage_repository` uses `admin:repository:bitbucket` and requires
-`read:project:bitbucket` when the server must resolve the destination project
-key to check a project UUID allowlist.
+| Operation | API token scopes |
+| --- | --- |
+| Repository metadata, files, refs, history and commit resolution | `read:repository:bitbucket` |
+| Code search | `read:repository:bitbucket`, `read:workspace:bitbucket` |
+| User UUID lookup | `read:user:bitbucket` |
+| Repository settings updates | `admin:repository:bitbucket`, `read:repository:bitbucket` for identity checks. Add `read:project:bitbucket` if resolving the destination project for a project UUID allowlist |
+| Git branch rules | `admin:repository:bitbucket` for reads and writes. Writes also use `read:repository:bitbucket` |
+| SSH repository links | `admin:repository:bitbucket`, `read:pipeline:bitbucket`, `write:ssh-key:bitbucket`. Add `delete:ssh-key:bitbucket` for replacement |
+| Pipeline, schedule, deployment and variable reads | `read:pipeline:bitbucket` |
+| Run or stop pipelines and manage schedules | `read:pipeline:bitbucket`, `write:pipeline:bitbucket`. Running a pipeline or adding a schedule checks Pipelines settings with `admin:repository:bitbucket`. Running a pipeline also resolves its ref with `read:repository:bitbucket` |
+| Set or delete pipeline variables and create deployment environments | `read:pipeline:bitbucket`, `admin:pipeline:bitbucket`. Creating an environment also checks Pipelines settings with `admin:repository:bitbucket` |
+| Link repositories by token | `admin:repository:bitbucket` to check Pipelines settings, `read:repository:bitbucket` for identity checks, `read:pipeline:bitbucket` and `admin:pipeline:bitbucket` for the destination variable |
+| Pull request reads and comments | `read:pullrequest:bitbucket`. PR comparison lookups also use `read:repository:bitbucket` |
+| List or read webhooks | `read:webhook:bitbucket` |
+| Create, update or delete webhooks | `read:repository:bitbucket` and `read:webhook:bitbucket`. Add `write:webhook:bitbucket` for create or update and `delete:webhook:bitbucket` for delete |
 
-Repository webhooks require `read:webhook:bitbucket` to list or get,
-`write:webhook:bitbucket` in addition to create or update, and
-`delete:webhook:bitbucket` to delete. Creating or updating a subscription
-may also require scopes for its selected events. Webhook writes read
-repository identity before confirmation and before writing.
+Project restrictions also require repository read access for live membership
+checks. Some webhook events require additional scopes. Bitbucket's pull request
+read scope includes posting comments. See [Atlassian's API token permissions](https://support.atlassian.com/bitbucket-cloud/docs/api-token-permissions/).
 
 ## Read-only mode
 
-Start the server with `--read-only` or set `BITBUCKET_READ_ONLY=true`.
-Either enables the mode. The flag takes effect even when the environment
-variable is `false`. Invalid boolean values stop startup.
+Start the server with `--read-only` or set `BITBUCKET_READ_ONLY=true`. The flag
+takes precedence over `false`. Invalid boolean values stop startup.
 
-In this mode, the server registers only read-only tools. Mixed operations
-such as `manage_repository` and `manage_deployment` are unavailable, as is
-`api_request`, even when explicitly enabled. Use `get_repository`,
-`get_branch_restrictions` and `get_uuid` for the corresponding reads.
-Repository, project, tool and confirmation policy still applies. Read-only
-pipeline resources and subscriptions remain available.
+This mode registers only read-only tools. Use `get_repository`,
+`get_branch_restrictions` and `get_uuid` for reads that correspond to
+`manage_repository` and `manage_deployment`. Access rules, configured read
+confirmations and pipeline resources still apply.
 
 ## Optional API proxy
 
-`BITBUCKET_ENABLE_API_PROXY=true` registers the `api_request` escape hatch.
-Unset or `false` leaves it absent; invalid boolean values stop startup.
-An allowed-tools entry or wildcard alone never enables it. Its token needs the
-scopes required by each requested API endpoint; enabling the tool does not grant
-additional Bitbucket permissions.
-
-The proxy uses server credentials, accepts non-secret JSON requests and returns
-bounded JSON or text with credential fields redacted. Writes require browser
-confirmation by default. It refuses execution when repository, project or ref
-allowlists are set, even to `[]`, because arbitrary bodies and responses cannot
-be checked with the dedicated tools' entity-specific policies. Repository-specific
-tool rules also disable the proxy to prevent bypass through an arbitrary API call.
-Keep the flag in
-the operator's environment, outside the model's control. See
-[API proxy](tools.md#api-proxy) for limits and examples.
+Set `BITBUCKET_ENABLE_API_PROXY=true` in the operator's environment to register
+`api_request`. It defaults to `false`. Read-only mode hides the tool even when
+the flag is set. See [API proxy limits and policy](tools.md#api-proxy).
 
 ## Local system browser
 
-Set `BITBUCKET_LOCAL_BROWSER=true` for a local desktop MCP client that cannot
-open URL elicitation, including Claude Desktop installations that immediately
-return `cancelled`. The server opens the approval page through macOS `open` or
-Linux `xdg-open` and waits for the browser form in the same tool call.
-The default is `false`, which uses the client's MCP URL elicitation.
-This boolean can be saved in Keychain through `configure` or set in the server's
-environment. Environment configuration takes precedence.
-
-The browser page still requires explicit approval and secret entry, and all
-access limits, destination checks, expiry and cancellation rules still apply.
-Opening the browser alone does not approve an operation. A graphical desktop
-and a configured default browser are required for local-browser mode.
-See [Claude Desktop setup](claude-desktop.md).
+Set `BITBUCKET_LOCAL_BROWSER=true` for a local desktop client without working
+URL elicitation. The server opens the approval page with macOS `open` or Linux
+`xdg-open`. This requires a graphical desktop and default browser. The default
+uses the MCP client's URL elicitation. See [approval behavior](security.md#local-browser-mode)
+and [Claude Desktop setup](claude-desktop.md).
 
 ## Confirmation and access limits
 
-By default, every tool that changes Bitbucket requires a one-time confirmation
-on the server's local browser page, including operations that take no secrets.
-Set `BITBUCKET_CONFIRM_TOOLS` to a JSON array of exact tool names to require
-confirmation only for those tool calls, including read tools if desired. The
-entry `"*"` matches every tool; `["*"]` confirms both reads and writes.
-Tool rules and confirmation lists accept the legacy `create_deployment`
-name for `manage_deployment`, including repository-scoped tool rules.
-For example, `["run_pipeline","delete_variable","manage_deployment"]` confirms
-those three tools. An unset variable or `[]` keeps the default: confirm every
-write, without confirmation for reads. Invalid arrays prevent startup. This
-setting is independent of `BITBUCKET_ALLOWED_TOOLS` and never grants access denied by an allowlist.
-Calls requiring secret entry always open the browser page, regardless of this
-setting; secret values still cannot be passed as tool arguments. Resource reads
-and subscriptions use access limits, not tool-call confirmation. The MCP
-client must support URL elicitation (MCP 2025-11-25 or later) for calls requiring
-confirmation or secret entry; without it, those calls are refused. Opening the
-page or returning `accept` through MCP does not approve a change: the user must review the arguments and submit the approval checkbox.
-Approvals are bound to the tool, its arguments and the MCP session, expire after
-10 minutes and cannot be reused.
+Writes require [browser approval](security.md#secret-page) by default.
+Set `BITBUCKET_CONFIRM_TOOLS` to an array of exact tool names to require
+confirmation only for those tools, including reads if desired. `["*"]`
+confirms every tool call. An unset list or `[]` keeps the default. Calls
+that need secret entry always use the browser page. Resource reads and
+subscriptions apply access limits independently of tool-call confirmation.
 
-The page shows the workspace and complete non-secret arguments. For a pipeline
-run, the server resolves the revision to a full commit SHA before approval and
-runs that SHA even if the branch moves while the page is open. Both plain
-variables and the names of secured variables are shown. A schedule authorizes
-future runs of the selected branch, whose head can change over time.
-
-Variable changes also show the resolved deployment environment UUID and the UUID
-of a variable being replaced. If either destination or replacement changes while
-approval is pending, the operation is refused and requires a fresh confirmation.
-The destination, replacement UUID and secured flag are checked again after browser
-submission, immediately before a variable is written or deleted. Token links also
-finish the read-access probe before this final check. A key link likewise reads
-the source's public key and the target's Access Keys again before it changes
-them, and a schedule deletion reads the schedule again.
-
-These optional environment variables narrow the server's authority. Each is a
-JSON array of names or tool rules. An unset variable allows all names within the configured
-workspace. For `BITBUCKET_ALLOWED_TOOLS`, `[]` also keeps that default and the
-entry `"*"` allows every tool subject to deny rules. Repository, project and ref lists use exact names
-without wildcard expansion; `[]` denies all for those three lists, except that
-repository and project lists add up when both are set (see below). Invalid
-arrays stop the server rather than silently removing the restriction.
+Use the following JSON arrays to narrow access. Repository, project and ref
+lists match exact names. Invalid arrays stop startup.
 
 | Variable | Example | Restriction |
-|----------|---------|-------------|
-| `BITBUCKET_ALLOWED_REPOS` | `["repo-a","repo-b"]` | These repositories, in any project; applies to both repositories of a link and all repository tools/resources; workspace variables are disabled when this list is set |
-| `BITBUCKET_ALLOWED_PROJECTS` | `["APP","{01234567-89ab-cdef-0123-456789abcdef}"]` | Repositories in these projects in the configured workspace; exact project keys or UUIDs, not display names; workspace variables are disabled when this list is set |
-| `BITBUCKET_ALLOWED_TOOLS` | `["get_pull_request","set_variable@repo-a","!delete_variable@repo-a"]` | Allow/deny rules for tools, optionally scoped to a repository; pipeline resources and subscriptions also require `get_pipeline` |
-| `BITBUCKET_ALLOWED_REFS` | `["branch:main","tag:v1.2.0"]` | Only these refs can run pipelines, only at commits on them, or have schedules added/deleted |
+| --- | --- | --- |
+| `BITBUCKET_ALLOWED_REPOS` | `["repo-a","repo-b"]` | Exact repository slugs, regardless of project |
+| `BITBUCKET_ALLOWED_PROJECTS` | `["APP","{01234567-89ab-cdef-0123-456789abcdef}"]` | Exact project keys or UUIDs in the workspace |
+| `BITBUCKET_ALLOWED_TOOLS` | `["get_pull_request","set_variable@repo-a","!delete_variable@repo-a"]` | [Tool rules](#repository-specific-tool-rules) |
+| `BITBUCKET_ALLOWED_REFS` | `["branch:main","tag:v1.2.0"]` | Refs for pipeline runs and schedule changes. A run's commit must belong to its selected ref |
 
-Repository and project lists add up: when both are configured, a repository is
-allowed if either list allows it. For example, `BITBUCKET_ALLOWED_PROJECTS='["APP","OPS"]'`
-allows repositories in either project, and adding `BITBUCKET_ALLOWED_REPOS='["tools"]'`
-also allows `tools` wherever it is. With both set, `[]` in one list adds nothing,
-so access comes from the other list alone. Use project UUIDs to keep the
-restriction tied to the same project if its key changes.
+A repository must match at least one entry when either the repository or
+project list is set. An empty list adds no repositories. With both lists
+unset, the server permits all repositories the token can access. Use project
+UUIDs to keep a rule tied to the project across a key change. Setting either
+list disables workspace variable tools.
 
-Earlier releases intersected the two lists: a repository had to satisfy both. A
-configuration with both lists set now allows more; review it when upgrading.
+An unset ref list permits all refs. An empty ref list permits none.
 
-With project restrictions, each repository API request first reads its current
-`project.key` and `project.uuid` using the server's account, unless the
-repository is listed in `BITBUCKET_ALLOWED_REPOS`. This adds one metadata
-request per API request and requires repository read access. Missing project
-metadata or a failed lookup refuses the operation. Membership is never cached,
-so moves out of an allowed project are checked after browser approval and during
-polling. Both repositories of a link are checked, including its source again
-before the write. Project checks before a write must finish within its approval's
-deadline; a write already sent can complete after that deadline. Workspace-wide
-operations and commit lookups in a fork outside the configured workspace are
-refused; `search_repositories` instead narrows its workspace listing to the
-allowed repositories and projects and filters the answer (see
-[Repository search](tools.md#repository-search)). Bitbucket provides no atomic project check
-and write: an administrator can still move a repository between those requests.
+For a repository that is allowed only through its project, the server reads
+live project metadata before repository requests. This adds an API request and
+requires repository read access. Failed lookups stop the operation. Repository
+and code search use [filtered workspace listings](tools.md#repository-search).
+Bitbucket handles project lookup and writes as separate requests, so an
+administrator can still move a repository between them.
 
-Keep these settings in Keychain, the operator's environment or user-scoped MCP config,
-outside the model's control. Use a dedicated account/token with only the
-Bitbucket permissions needed by that environment.
+Keep policy settings in Keychain, the operator's environment or user-scoped
+client configuration. Browser confirmation and tool rules can narrow access
+independently of the token's Bitbucket permissions.
 
 ### Repository-specific tool rules
 
-`BITBUCKET_ALLOWED_TOOLS` accepts these entries:
-
 | Entry | Meaning |
-|-------|---------|
-| `get_pipeline` | Allow this tool in every otherwise allowed repository |
-| `get_pipeline@repo-a` | Allow this tool only for the exact repository slug `repo-a` |
-| `!delete_variable@repo-a` | Deny this tool for `repo-a` |
-| `!delete_variable` | Deny this tool everywhere |
+| --- | --- |
+| `get_pipeline` | Allow the tool in every otherwise allowed repository |
+| `get_pipeline@repo-a` | Allow the tool only for `repo-a` |
+| `!delete_variable@repo-a` | Deny the tool for `repo-a` |
+| `!delete_variable` | Deny the tool everywhere |
 | `*` or `*@repo-a` | Allow every tool globally or for `repo-a` |
 | `!*@repo-a` | Deny every tool for `repo-a` |
 
-If any allow entry is present, a call must match an allow entry. With only deny
-entries, other calls remain allowed. An unset list or `[]` allows all tools.
-Denials always win, regardless of entry order; a wildcard cannot override them.
-Repository slugs in tool rules match case-insensitively, so changing the case of
-the `repo` argument cannot bypass a denial. Tool names remain case-sensitive.
-For example, `["*","!delete_variable@production"]` allows all tools except
-deleting variables in `production`, while `["get_pipeline","set_variable@staging"]`
-allows reading pipelines everywhere and changing variables only in `staging`.
-Tool rules never override repository, project or ref limits, browser confirmation,
-or the separate API-proxy opt-in. Partial wildcards and malformed rules stop startup.
+A call must match an allow entry when the list contains any allow entry.
+With only denials, other tools stay available. An unset list or `[]` allows
+all tools. Denials take precedence. Repository slugs in these rules match
+case-insensitively, while tool names match case-sensitively. Malformed rules and
+partial wildcards stop startup.
 
-For link tools, both `source_repo` and `target_repo` must be allowed by the tool
-rules. Pipeline resource reads and subscriptions apply `get_pipeline` rules for
-their repository. If a tool has a repository-specific rule, calls without an
-explicit repository are refused, including workspace variables and `search_code`
-without `repo`. Use global rules for tools with no repository argument, such as
-`search_repositories`. The API proxy is unavailable whenever any repository-specific
-tool rule is configured, because it cannot enforce those limits on arbitrary APIs.
+Link tools check both repositories. Pipeline resources and subscriptions use
+`get_pipeline` rules. A repository-specific rule requires calls to that tool
+to name a repository, so it can prevent a workspace variable call or code search
+without `repo`. Use global rules for tools without a repository argument,
+such as `search_repositories`. Tool rules and confirmation lists accept
+`create_deployment` as an alias for `manage_deployment`.
 
 ## macOS Keychain setup
 
-Run `bitbucket-cloud-mcp configure` in a terminal. With existing saved configuration,
-it opens a menu to edit one parameter. Select a field by number or full parameter
-name, enter its new value and save; all other saved values remain unchanged.
-For example, choose `BITBUCKET_API_TOKEN` to rotate only the token, or
-`BITBUCKET_ALLOWED_PROJECTS` / `BITBUCKET_ALLOWED_REPOS` to replace that JSON array.
-The selected non-secret field's current value is shown; the token is never shown.
-Blank input keeps the saved value. For optional settings, `/clear` removes the
-saved parameter and restores its default; `[]` instead keeps the list's usual
-meaning. Environment variables are not copied into Keychain by the editor and
-still override saved values when the server starts.
-Choose `0` to cancel, or `all` to replace every setting through full setup.
+Run `bitbucket-cloud-mcp configure` in an interactive terminal. On first use
+it prompts for credentials, the five access and confirmation lists, and the
+API proxy and local-browser switches. Enter arrays directly, such as
+`["repo-a"]`, and use `true` or `false` for switches. Leave optional inputs
+blank to use their defaults. Set read-only mode through the command flag or
+environment.
 
-On first use, or after choosing `all`, it asks for the workspace,
-Atlassian email, API token, all five optional access/confirmation settings and the optional
-API proxy and local-browser switches. Enter `true` or `false` for each switch;
-a blank answer keeps it disabled.
-The token is entered with terminal echo disabled and is never displayed.
-Required values cannot be blank. Optional settings accept JSON arrays directly,
-for example `["repo-a"]`, without wrapping the array in a JSON string.
-Invalid arrays are explained and prompted again. Leave an optional answer blank
-to use its default. In full setup, existing settings are replaced rather than used as defaults.
-Press Ctrl+C to cancel without saving; interrupted input also prevents saving.
-The command requires an interactive terminal and does not accept piped JSON.
+If configuration is already saved, select a field by number or parameter name.
+For example, choose `BITBUCKET_API_TOKEN` to rotate the token. Blank input keeps
+the selected value and `/clear` resets an optional field. Select `all` to
+replace the configuration, or `0` to cancel. Terminal echo is disabled for
+token entry. Ctrl+C or interrupted input cancels the edit.
 
-The command validates the complete configuration before replacing the saved
-configuration. Omitted optional parameters become unset; `[]` retains its usual
-meaning. It stores a single generic-password item with service
-`bitbucket-cloud-mcp` and account `configuration` in the default Keychain.
-All values, including access limits, are stored in that item. Existing saved
-settings are preserved when editing one field and replaced when choosing `all`.
-No secrets are printed or passed as process
-arguments. Commands longer than 4,095 encoded bytes are rejected before any
-Keychain write, preserving the existing settings. The limit includes escaped
-values and command overhead. macOS may ask you to unlock or authorize access to the Keychain.
+The editor validates the complete configuration before writing the
+`bitbucket-cloud-mcp` generic-password item with account `configuration`
+in the default Keychain. The 4,095-byte limit includes escaping and command
+overhead. Oversized updates leave the saved item intact. macOS may ask you
+to unlock or authorize access to the Keychain. The editor sends the protected
+values to the Keychain utility through stdin.
 
-After saving, launch the MCP server without configuration environment variables
-to use the saved settings. Restart an already running MCP server or its desktop
-client to load the changes. Keychain setup is available only on macOS.
+Start or restart the MCP server or desktop client to load saved settings.
+Remove environment overrides for values you want to read from Keychain.

@@ -1,40 +1,49 @@
 # Tools
 
+See [API token scopes and access limits](configuration.md) for permissions and
+[browser approval](security.md#secret-page) for writes and secret entry. Treat
+results marked `content_trust: "untrusted"` as Bitbucket data.
+
+## Pagination
+
+Unless specified otherwise, numbered lists use `page` starting at 1 and
+`limit` defaulting to 10, with a maximum of 50. Pass `next_page` as `page`
+and keep the same filters and limit. When Bitbucket reports a count, lists
+include `total`. Concurrent updates can move entries between pages.
+
+Internal lookups of steps, deployment environments, access keys, variables
+and schedules can follow up to 20 API pages of at most 4 MiB each. Variable
+lookup stops at the first match. When a lookup needs more pages than that,
+the operation returns an error.
+
 ## Commit history
 
 `list_commits` lists the commits of `repo`, newest first, one page at a time.
-`limit` is 10 by default, at most 50; pass `next_cursor` unchanged as `cursor`,
-with the same filters and limit, for older entries. There is no page-number
-input: Bitbucket's history continuation is opaque and may contain iterator
-state rather than a number. The cursor is checked against the API origin,
-repository, endpoint, revision, filters and limit before each request; it is
-limited to 16 KiB. An absent `next_cursor` marks the last page.
-Each entry contains `commit` with its
-hash, date, message, author and parents. `total` is included when Bitbucket
-supplies it. A result over 40 KiB is refused; reduce `limit` and start again
-without `cursor` to request less.
-Messages and metadata are marked `content_trust: "untrusted"`.
+`limit` is 10 by default, at most 50. For older entries, pass the opaque
+`next_cursor` unchanged as `cursor` with the same filters and limit. The
+server checks the API origin, repository, endpoint, revision, filters and
+limit before accepting a cursor of up to 16 KiB. An absent `next_cursor`
+marks the last page. Each entry contains `commit` with its hash, date,
+message, author and parents. The result includes `total` when Bitbucket
+reports it. If a result exceeds 40 KiB, reduce `limit` and start again without
+`cursor`.
 
 - `path` selects a file or a directory and its descendants.
 - `prefix` selects paths starting with that prefix, including a partial file
   or directory name. It is mutually exclusive with `path`. The implementation
   sends `path=<prefix>*` to Bitbucket's commits API. This wildcard behavior was
   verified against the live API but is not explicitly described in its contract.
-- Omit both filters for the repository's complete commit history. Paths must
-  be repository-relative; wildcard and Git pathspec characters are not accepted
-  in either input. A directory path may end with `/`.
+- Omit both filters for the repository's complete commit history. Use literal
+  repository-relative paths. A directory path may end with `/`.
 - Omit `revision` to include all branches and tags. These pages can move when
-  refs change. Supply a branch, tag or commit to limit history to that revision:
-  it is resolved to a full SHA and returned as `revision`. Use that SHA for
-  subsequent pages so a moving branch cannot mix versions.
+  refs change. A supplied branch, tag or commit resolves to a full SHA in
+  `revision`. Use that SHA on subsequent pages to keep the history pinned.
 - Set `follow_renames: true` with a file `path` and `revision` to use Bitbucket's
   file-history API, which follows that file across renames. Each entry then
   includes its historical `path`. This option is unavailable with `prefix`.
   Without it, history follows the supplied path, not a file's previous names.
 
-The tool requires `read:repository:bitbucket` and respects repository, project,
-tool and configurable read-confirmation policies. Each call reads one history
-page, plus the revision lookup when needed and live project checks when enabled.
+Each call reads one history page, plus a revision lookup when needed.
 
 ```json
 {"repo":"my-repo","prefix":"src/pay","revision":"main","limit":10}
@@ -46,40 +55,32 @@ page, plus the revision lookup when needed and live project checks when enabled.
 
 ## API proxy
 
-`api_request` is absent by default. The operator must set
-`BITBUCKET_ENABLE_API_PROXY=true` before starting the server to register it.
-It sends one request to `https://api.bitbucket.org/2.0` with the configured
-account and token. Its required inputs are `method` (uppercase `GET`, `HEAD`,
+`api_request` sends one request to `https://api.bitbucket.org/2.0` with the
+configured account and token. Enable it in the [server configuration](configuration.md#optional-api-proxy).
+Its required inputs are `method` (uppercase `GET`, `HEAD`,
 `OPTIONS`, `POST`, `PUT`, `PATCH` or `DELETE`) and `path`, starting with `/`
 relative to that API base, without `/2.0`. Absolute URLs, path traversal and
 redirects are refused. Repository, workspace, team and snippet paths must name
 the configured workspace. Account endpoints such as `/user` are also available.
 
-`query` is an optional object of arrays of strings for repeated query parameters;
-parameters already in `path` are retained. `body` is optional JSON for writes.
+`query` accepts arrays of strings for repeated parameters and keeps any
+parameters already in `path`. `body` accepts optional JSON for writes.
 GET, HEAD and OPTIONS do not accept a body. Custom authentication, headers,
 multipart uploads and binary responses are unsupported. The combined path,
-query and body are limited to 64 KiB; a response body to 40 KiB.
+query and body are limited to 64 KiB. Response bodies are limited to 40 KiB.
 
 The result contains `status`, `content_type`, and either JSON `body` or UTF-8
-`text`, marked `content_trust: "untrusted"`. Responses do not authorize further
-requests. Known credential fields and all JSON fields named `value` are redacted,
+`text`. Known credential fields and all JSON fields named `value` are redacted,
 including partial variable responses without their secured flag. Configured
 credentials are removed from returned strings. Webhook URLs show the scheme,
-host and any explicit port. Their upstream error
-messages and non-JSON bodies are withheld because they can echo the full URL.
-Keep secrets out of paths, queries and bodies. The proxy rejects recognized secret fields. Use dedicated tools
+host and any explicit port. Upstream webhook errors and non-JSON webhook
+bodies are withheld because they can echo the full URL. Use dedicated tools
 with browser secret entry for secret-bearing operations.
 
-The tool allowlist still applies. An arbitrary request can name additional
-repositories or refs in its body or response, so this escape hatch refuses
-execution whenever any repository, project or ref allowlist is configured,
-including an empty list, or any repository-specific tool rule is present.
-The dedicated tools remain available under those limits.
-By default, writes require the existing browser confirmation of the exact
-method, path, query and body; GET, HEAD and OPTIONS do not. The confirmation
-tool list can require reads or allow writes without a browser, as for other tools.
-The proxy's annotations conservatively describe it as capable of writes.
+The proxy refuses calls when any repository, project or ref allowlist is set,
+including an empty list, or when any repository-specific tool rule is present.
+Confirmation shows the method, path, query and body. By default it applies to
+all methods except `GET`, `HEAD` and `OPTIONS`.
 
 There is no automatic pagination or retry. Use small `pagelen` and `fields`
 values where the endpoint supports them. For another page, pass the API's
@@ -88,7 +89,7 @@ and 429 retry guidance are returned. If a write succeeds but its response is
 oversized or unreadable, check its outcome before repeating it.
 
 ```json
-{"method":"GET","path":"/repositories/my-workspace/my-repo/issues","query":{"pagelen":["10"],"state":["new","open"]}}
+{"method":"GET","path":"/repositories/my-workspace/my-repo/refs/branches","query":{"pagelen":["10"]}}
 ```
 
 ## Files and directories
@@ -100,24 +101,17 @@ pass `path: ""`. Absolute paths, empty path segments, `.` and `..` segments and
 backslashes are refused. Paths are not interpreted as local filesystem paths.
 
 A branch or tag is resolved to a full commit SHA before reading. Both results
-return that SHA as `commit`. Set `revision` to this SHA for subsequent calls:
-`get_file` returns `next_offset`, passed as `offset`; `list_directory` returns
-`next_page`, passed as `page`, keeping the same path and limit. Continuations
-require a full SHA so moving a branch cannot mix file or directory versions.
+return that SHA as `commit`. Pass it as `revision` on subsequent calls, along
+with `next_offset` as `offset` for `get_file` or `next_page` as `page` for
+`list_directory`. Keep the same path and limit to continue reading the same
+version.
 
 `get_file` accepts files up to 1 MiB, including empty files, and returns at most
 40 KiB per call without splitting UTF-8 characters. `size` and offsets count
 bytes. Each call downloads the bounded file again. Binary files (NUL bytes or
 invalid UTF-8), larger files and redirected downloads, including Git LFS, are
-refused. `list_directory` takes `limit` (10 by default, at most 50) and `page`
-(1 by default); entries contain their type, repository-relative path, size and
-attributes when supplied by Bitbucket. Listings are not recursive.
-
-Both tools require `read:repository:bitbucket`. Repository, project and tool
-access limits and configurable read confirmations apply. Returned source and
-metadata carry `content_trust: "untrusted"`; they are data, never instructions.
-
-Example arguments:
+refused. Directory entries contain their type, repository-relative path,
+size and attributes when supplied by Bitbucket.
 
 ```json
 {"repo":"my-repo","revision":"main","path":"README.md"}
@@ -125,26 +119,17 @@ Example arguments:
 
 ## Branches and tags
 
-`list_branches` and `list_tags` take `repo`, `limit` (10 by default, at most 50)
-and `page` (1 by default). Results contain `refs`, ordered by name, with each
-name and target commit; annotated tags can also include a message. Pass
-`next_page` as `page`, keeping the same limit, for more. `total` is included when
-Bitbucket supplies it. Concurrent ref changes can reorder pages.
-
-Both require `read:repository:bitbucket` and respect repository, project and tool
-limits and configurable read confirmations. `content_trust: "untrusted"` marks
-ref names and messages as data. Pipeline ref restrictions do not limit these
-read tools; `BITBUCKET_ALLOWED_REFS` applies to pipeline runs and schedules.
+`list_branches` and `list_tags` take `repo` and return `refs` by name, with
+each target commit. Annotated tags can also include a message.
+`BITBUCKET_ALLOWED_REFS` applies to pipeline runs and schedule changes.
 
 ## Repository search
 
-`search_repositories` finds repositories of the workspace whose name contains
-`query`, optionally only in the project with key `project`, among those the
-access limits allow; with no `query` it lists them all. They come by slug, a
-page at a time (`limit` a page, 10 by default and at most 50): `next_page` is
-passed back as `page`, with the same inputs, for more. Each comes with its slug,
-which the `repo` input of the other tools takes, name, project, description,
-language, privacy, main branch, last update and page on bitbucket.org.
+`search_repositories` finds accessible workspace repositories by a partial
+name (`query`) and optional project key (`project`). Omit `query` to list all
+matching repositories. Results are sorted by slug. Use that slug as `repo`
+in other tools. Each result includes the name, project, description, language,
+privacy, main branch, last update and Bitbucket URL.
 
 The request itself asks Bitbucket only for allowed repositories: those listed
 in `BITBUCKET_ALLOWED_REPOS`, and, with `BITBUCKET_ALLOWED_PROJECTS`, those in
@@ -152,8 +137,7 @@ an allowed project, by key or by UUID for entries in braces. The server then
 checks every repository of the answer against the same rule, by the project it
 shows, and drops any other. As only the page returned can be checked, `total`,
 Bitbucket's count of every page, is left out while access limits are set.
-So no project lookups are needed, and a call costs one API request; when the
-limits allow nothing, it makes none.
+A call uses one API request and skips it when the limits allow nothing.
 
 ## Code search
 
@@ -176,28 +160,22 @@ page, with no automatic retries. Standard API errors, including permission failu
 Bitbucket limits results to repositories the configured account can read. The
 server's tool allowlist and configurable read confirmations also apply. With
 repository or project access limits, the server injects an OR of exact allowed
-repository slugs into the search request. Project keys and UUIDs are resolved via
-all pages of a policy-filtered repository listing on every call; wider listing
-entries are discarded. Explicit repository entries are allowed independently of
-their project, matching the existing union policy. An empty allowed set returns
-an empty result without calling code search.
+repository slugs into the search request. On each call the server resolves
+project keys and UUIDs through a filtered listing and discards out-of-scope
+entries. Repository entries are allowed independently of their project.
+An empty allowed set returns an empty result without calling code search.
 
 The injected scope is sorted and deduplicated to keep filters stable for cursor
-pagination. If accessible project repositories change between pages, Bitbucket
-may reject the changed filter: restart the search rather than reuse an old scope.
+pagination. If accessible project repositories change and Bitbucket rejects
+the cursor, start the search again.
 Before returning code, the server checks every file URL against the requested
 workspace, optional repository and resolved allowed set, and checks current project
 membership once per returned repository. A disallowed or unverifiable repository
 fails the entire page without returning its code. Raw repository metadata is not
-returned, and the approximate `metadata.total_count` is omitted under access limits. Code is marked
-`content_trust: "untrusted"` and must never be treated as instructions.
+returned. Access limits also suppress the approximate `metadata.total_count`.
 
-Requires an Atlassian API token with `read:repository:bitbucket` and
-`read:workspace:bitbucket`, through the existing Basic authentication. App
-passwords and legacy identity-less OAuth credentials are unsupported by this API.
-An authorization failure is returned without falling back to broader credentials.
-
-Example tool arguments:
+This API uses an Atlassian API token with Basic authentication. App passwords
+and legacy identity-less OAuth credentials are unsupported.
 
 ```json
 {"query":"handlePayment","language":"go","path":"src/*","limit":20}
@@ -206,20 +184,18 @@ Example tool arguments:
 ## Repository settings
 
 `get_repository` reads a repository by its `repo` slug. It returns its name,
-slug, project, description, language, privacy, main branch and URL. This
-requires `read:repository:bitbucket`. A call to `manage_repository` with only
-`repo` returns the same settings.
+slug, project, description, language, privacy, main branch and URL. A call to
+`manage_repository` with only `repo` returns the same settings.
 
 To update a repository, call `manage_repository` with at least one of
-`slug`, `project` (destination project
-key in the configured workspace), `description` or `language` (for example,
-`go`). Omitted settings are left as they are. Use an empty string to clear
+`slug`, `project` (a project key in the configured workspace),
+`description` or `language` (for example, `go`). Use an empty string to clear
 the description or language.
 
 Bitbucket derives the slug from the repository name, so changing the slug
 also changes the name. The result contains the slug Bitbucket returns and
 the resulting URL. Both the current repository and its destination must
-satisfy server access policy. Updates require confirmation by default.
+satisfy server access policy.
 A rename also requires the same repository-specific tool rules on both slugs.
 
 ### Repository webhooks
@@ -238,7 +214,6 @@ settings or branch restrictions. For creation, provide `settings` containing
 including `active: false` and empty descriptions. Keep credentials out of
 the webhook URL. Set `set_secret: true` to enter a signing secret in the
 local browser page, or `remove_secret: true` on update to clear it.
-Writes require confirmation by default.
 
 ```json
 {"repo":"my-repo","webhook":{"action":"create","settings":{"url":"https://example.com/webhook","description":"CI events","active":true,"events":["repo:push"]}}}
@@ -254,15 +229,13 @@ for delivery history.
 
 `get_branch_restrictions` reads rules using `repo` and optional `page` and
 `limit`. Supply `id` instead of pagination to read a single rule. The
-result includes `pipelines_source_branches` when Bitbucket returns it. This
-read-only tool still requires `admin:repository:bitbucket` for this API.
+result includes `pipelines_source_branches` when Bitbucket returns it.
 
 Use `manage_repository` with `repo` and `branch_restriction` to manage
 repository-level Git branch restrictions. Make a separate call for a
-repository settings update. The API token needs `admin:repository:bitbucket`.
+repository settings update.
 
-- `list` returns a page of rules, including IDs. Supply `page` (starting at
-  1) and `limit` (10 by default, up to 50). Pass back `next_page` when present.
+- `list` returns a page of rules, including IDs.
 - `get` returns the rule with the supplied `id`.
 - `create` takes a `rule`. Set `kind` and either a destination `pattern`
   for `glob` (the default) or `branch_match_kind: "branching_model"` with
@@ -288,7 +261,7 @@ even when the requested list was empty.
 
 Merge checks and conditions use Bitbucket's `kind` values directly. Pass a
 numeric `value` for approval counts, passing builds or maximum commits
-behind (including zero). Supported kinds include:
+behind (including zero). The table shows supported kinds.
 
 | Setting | `kind` |
 | --- | --- |
@@ -305,8 +278,8 @@ behind (including zero). Supported kinds include:
 | Keep approvals when the diff is unchanged | `smart_reset_pullrequest_approvals` |
 | Block merges with unresolved checks | `enforce_merge_checks` |
 
-Bitbucket applies workspace plan limits to merge checks. Writes require
-confirmation by default. See the [Bitbucket branch restrictions API](https://developer.atlassian.com/cloud/bitbucket/rest/api-group-branch-restrictions/).
+Bitbucket applies workspace plan limits to merge checks.
+See the [Bitbucket branch restrictions API](https://developer.atlassian.com/cloud/bitbucket/rest/api-group-branch-restrictions/).
 
 ## Repository, deployment and user UUIDs
 
@@ -315,12 +288,11 @@ confirmation by default. See the [Bitbucket branch restrictions API](https://dev
 environment's UUID instead. The result's `uuid` is copied from Bitbucket
 without normalization: braces, hyphens and letter case are preserved, for
 example `{"content_trust":"untrusted","uuid":"{01234567-89ab-cdef-0123-456789abcdef}"}`.
-An unknown environment or a missing UUID is an error. This read-only tool
-respects the repository, project and tool access limits.
+An unknown environment or a missing UUID is an error.
 
 To get a user's UUID, pass `user` with their Atlassian account ID or Bitbucket
-UUID. Use `{"user":"me"}` for the authenticated account. User lookups require
-`read:user:bitbucket` and cannot be combined with `repo` or `environment`.
+UUID. Use `{"user":"me"}` for the authenticated account. Pass `user` on its
+own, without `repo` or `environment`.
 Repository and project allowlists do not apply to user lookups. The tool
 allowlist and confirmation policy still apply.
 
@@ -359,24 +331,16 @@ Stores a repository access token of A as a secured pipeline variable of B.
 | `permissions`   | Token permissions: `repository`, `repository:write`, `repository:admin`, `repository:delete`, `pullrequest`, `pullrequest:write`, `webhook`, `pipeline`, `pipeline:write`, `pipeline:variable` |
 | `force`         | Overwrite the variable if it exists                        |
 
-Bitbucket has no API to create repository access tokens, so the user creates
-the token and pastes it into the [secret page](security.md#secret-page). The page links
-to A's access token page and lists the name and the permissions to select.
-Approval binds the source and target repository UUIDs. The server rechecks both
-repositories before saving the variable at the approved target UUID. The
-server checks only read access to one endpoint in A (the repository, pipelines
-or webhooks), chosen from the requested permissions, and writes the token into
-the secured variable. Success does not verify the token type, repository-only
-scope or actual permissions: a broader token can pass, and a read-only token can
-pass even when write permissions were requested. Bitbucket does not provide token
-metadata through this probe. Verify the token's repository and permissions in
-Bitbucket before submitting; do not paste a workspace, project or user token.
-The approval page states this limit, and success reports
-`token_validation: "read_access_only"`.
+Create the token in Bitbucket and enter it on the [secret page](security.md#secret-page).
+The page links to A's access token settings and lists the name and permissions
+to select. The server probes read access to one endpoint in A chosen from
+`permissions`, then stores the token in the approved target repository.
+Success reports `token_validation: "read_access_only"`. Verify the token type,
+repository scope and requested permissions in Bitbucket before submitting.
 
 ## Pipeline variables
 
-The variable tools work at one of three places, chosen by `scope`:
+The variable tools use `scope` to select where the variables live.
 
 | `scope`      | Other inputs          | Variables of                          |
 |--------------|-----------------------|---------------------------------------|
@@ -387,12 +351,9 @@ The variable tools work at one of three places, chosen by `scope`:
 Deployment-scoped operations require the selected environment's UUID from
 Bitbucket. A missing UUID returns an error before any variable is read or changed.
 
-- `list_variables` lists one page of names and values; values of secured
-  variables are never returned. `limit` is 10 by default, at most 50; `page`
-  starts at 1. Pass `next_page` as `page` with the same scope, repository,
-  environment and limit for more. `total` is returned when Bitbucket supplies
-  the count. Each call fetches only the requested variable page; resolving a
-  deployment environment name may require additional environment requests.
+- `list_variables` lists one page of names and plain values. Secured variables
+  expose their names and secured flag. Deployment lookups may require
+  additional requests to resolve the environment UUID.
 - `set_variable` creates a variable (`name`), or overwrites it with
   `force: true`. A plain variable takes its `value` from the call. A secured
   variable (`secured: true`) never does: a `value` in the call is refused, and
@@ -403,40 +364,34 @@ Bitbucket. A missing UUID returns an error before any variable is read or change
 
 ### `stop_pipeline`
 
-Takes `repo` and `pipeline`, a build number or UUID, and requests stopping that
-pipeline and all its unfinished steps. It resolves the pipeline UUID and shows
-it with the build number on the existing confirmation page. A changed target
-while approval is pending is refused. Repository/project and tool limits are
-checked, including live project membership before the write. Confirmation is
-required by default and follows `BITBUCKET_CONFIRM_TOOLS`.
+Pass `repo` and `pipeline` (a build number or UUID) to stop a run and its
+unfinished steps. Approval shows the resolved UUID and build number. A changed
+target requires fresh approval.
 
-`status: "stop_requested"` means Bitbucket accepted the stop signal, not that all
-steps have already stopped. Use `get_pipeline` or `watch_pipeline` for the final
-state. A pipeline already completed when checked returns `already_completed`
-without a stop request; declined approval returns `cancelled`. A pipeline may
-finish between the check and the stop request; Bitbucket errors are returned.
-Requires `read:pipeline:bitbucket` and `write:pipeline:bitbucket`. This tool does
-not resume paused manual steps.
+`status: "stop_requested"` means Bitbucket accepted the signal. Check the final
+state with `get_pipeline` or `watch_pipeline`. The tool returns
+`already_completed` if the run had finished at its final check, or `cancelled`
+when approval is declined. Bitbucket may finish a run during the stop request
+and return an error.
 
 ### `run_pipeline`
 
 | Input              | Meaning                                                          |
 |--------------------|------------------------------------------------------------------|
 | `repo`             | Repository                                                       |
-| `branch` / `tag`   | Ref to build; exactly one of them                                |
-| `commit`           | Commit to build in the context of the ref; its latest by default. It must be on the ref: a commit of another branch would run its own code as the ref's |
-| `custom`           | Custom pipeline (`pipelines.custom.<name>`); by default the pipeline `bitbucket-pipelines.yml` defines for the ref |
+| `branch` / `tag`   | Exactly one ref to build |
+| `commit`           | Commit on the selected ref. Defaults to its latest commit |
+| `custom`           | Custom pipeline (`pipelines.custom.<name>`). Defaults to the pipeline defined for the ref |
 | `variables`        | Plain variables of the custom pipeline: `[{"name", "value"}]`    |
-| `secret_variables` | Names of secured variables of the custom pipeline; the user enters their values on the [secret page](security.md#secret-page), and they are used for this run only |
+| `secret_variables` | Names of secured variables for this custom pipeline run. Enter their values on the [secret page](security.md#secret-page) |
 
-It returns the started pipeline with its build number, its page on
-bitbucket.org and its `resource_uri`.
+The result includes the started pipeline, its build number, URL and
+`resource_uri`.
 
 ### `list_pipelines`, `get_pipeline`
 
-`list_pipelines` returns the pipelines of `repo`, newest first, a page at a
-time (`limit` a page, 10 by default and at most 50). Filters, which can be
-combined, keep the pipelines:
+`list_pipelines` returns pipelines of `repo` newest first. Combine these
+filters to narrow the results.
 
 | Filter | Keeps pipelines |
 |--------|-----------------|
@@ -446,49 +401,30 @@ combined, keep the pipelines:
 | `definition` | of a part of `bitbucket-pipelines.yml`, written as results show it: `custom`, `branches`, `tags`, `pull-requests` or `default`, and for all but `default` optionally a name or pattern, such as `custom: deploy` or `branches: main` |
 | `trigger` | started by a `push`, `manual`ly (in Bitbucket or through the API), `scheduled`, or by a `parent_step` (child pipelines) |
 
-Each pipeline also shows its `trigger`: `push`, `manual`, `scheduled`, or
-`parent_step` for a child pipeline a step started. Filter values are checked
-before any request, so a mistyped one is named in the error. `page`, 1 by default, picks the page;
-`next_page` in the result is passed back as `page`, with the same filters and
-`limit`, for older pipelines, and is omitted on the last page. `total` counts
-the pipelines the filters keep when Bitbucket reports it.
-Pages are counted from the newest pipeline, so a run started between two calls
-moves the next page by one and repeats a pipeline. A call costs one API
-request. `get_pipeline`
-returns one `pipeline`, by build number or UUID (with or without its braces),
-with one page of its steps. `steps_limit` is 10 by default, at most 50;
-`steps_page` starts at 1. Pass `steps_next_page` as `steps_page`, keeping the same
-pipeline and `steps_limit`, for more. `steps_total` is included when Bitbucket
-supplies it. Only the requested step page is downloaded. Pipeline resources and
-`watch_pipeline` continue reading all steps for complete monitoring.
-States read like `PENDING`, `IN_PROGRESS/RUNNING`, `IN_PROGRESS/PAUSED` (waits
-for a manual step) or `COMPLETED/FAILED`.
+The listing includes the `trigger` for each run and omits steps. It fetches
+one API page per call.
 
-Each step includes its Bitbucket `url` when its UUID is available. A pipeline
-paused for manual execution includes a server-generated `notice` instructing the
-model to send the user a clickable link to the waiting step and ask them to click
-**Run** in Bitbucket. The same guidance is advertised in MCP server instructions
-and pipeline tool descriptions. Listings omit steps: use `get_pipeline` and
-follow `steps_next_page` to inspect them. A pending step alone does not establish
-that it is manual. If the waiting step cannot be identified or its link is
-unavailable, provide the pipeline URL and explain that manual action is needed.
-The public Bitbucket API cannot start a manual step in an existing run.
-Continue monitoring after the user starts the step.
+`get_pipeline` returns one run by build number or UUID (braces are optional)
+and a page of steps.
+It uses `steps_page`, `steps_limit`, `steps_next_page` and `steps_total` with
+the same defaults and limits as [numbered lists](#pagination).
+States include `PENDING`, `IN_PROGRESS/RUNNING`, `IN_PROGRESS/PAUSED` and
+`COMPLETED/FAILED`. Steps include a Bitbucket URL when a UUID is available.
+
+When a run pauses for manual execution, use its `notice` to share the waiting
+step's URL and ask the user to click **Run** in Bitbucket. Use the pipeline URL
+if the waiting step's link is unavailable. A pending step alone cannot identify
+a manual step. Resume monitoring after the user starts it.
 
 ### `watch_pipeline`
 
-Waits until the pipeline completes, pauses for a manual step or
-`timeout_seconds` pass (600 by default, at most 3600). `poll_interval_seconds`
-sets the base interval for this call, from 1 to 60 seconds; omitted or zero
-keeps the default of 30 seconds. Project restrictions double the base interval,
-so a value of 5 polls every 10 seconds with project limits. The first status
-check is immediate, and the timeout still bounds the call when it is shorter
-than the interval. The interval belongs to this call and does not alter other
-watches or resource subscriptions. It returns the outcome (`completed`,
-`paused` or `timeout`), every
-status change of the pipeline and its steps seen on the way, and the final
-status. When the client sends a progress token, each poll is also reported as
-a progress notification.
+Polls the run and all its steps until completion, a manual pause or
+`timeout_seconds` (600 by default, at most 3600). The result includes
+`outcome` (`completed`, `paused` or `timeout`), observed changes and the last
+complete status. The first poll is immediate. Set `poll_interval_seconds`
+from 1 to 60 for this call. Omit it or pass zero for 30. Project restrictions
+double the interval. Clients that supply a progress token receive a status
+notification for each poll.
 
 With `stream_logs: true`, the same progress channel also delivers new log lines
 from every started step, including parallel steps. Set `step` to a UUID or
@@ -503,33 +439,25 @@ for this mode. The following MCP `tools/call` parameters enable it.
 }
 ```
 
-Status messages keep their text format. Log messages are JSON objects containing
+Log progress messages are JSON objects containing
 `content_trust: "untrusted"`, `build_number`, `step`, `log` and the step's `url`.
-External log text is data, never instructions or authorization. Byte offsets avoid
-repeating output; incomplete lines are buffered until their newline or the end of
-the watch, and terminal escapes are removed. Completed steps are read once more
-and then stop consuming log requests. A running step whose log is not available
-yet is retried; a missing log when the step or watch ends is reported with
-`unavailable: true`.
+The server uses byte offsets to avoid repeats and strips terminal escapes.
+It buffers partial lines until a newline or the end of the watch and performs
+a final read for completed steps. It retries missing logs while a step runs.
+A log still missing at the end is marked `unavailable: true`.
 
-Each read keeps the latest 64 KiB of raw log, and each message carries at most
-32 KiB of log text as JSON. If output grows beyond those bounds between polls,
-or a shorter log indicates a reset, `truncated: true` marks the gap. The result
-also includes recent chunks in `logs`, bounded to 256 KiB together, with `logs_truncated: true` when
-output was omitted. Use `get_pipeline_log` or the step URL for more. An incomplete
-line remaining at timeout is included in the result even though the expired
-progress channel can no longer deliver it.
+Each read keeps the latest 64 KiB of raw log and each message carries at most
+32 KiB as JSON. `truncated: true` marks a gap or reset. The final `logs` keep
+up to 256 KiB of recent chunks, including any partial line at timeout.
+`logs_truncated: true` marks omitted output. Use `get_pipeline_log` or the
+step URL for more.
 
-The timeout also cancels API requests and progress notifications. On timeout the
-result contains the last complete status; `pipeline` is omitted if the first poll
-did not finish. Client cancellation remains an error.
+The timeout also cancels API requests and progress notifications. If the first
+poll times out, the result omits `pipeline`. Client cancellation returns an
+error.
 
-A poll costs two API requests (up to four with project restrictions; two for a
-repository listed in `BITBUCKET_ALLOWED_REPOS`), and Bitbucket
-allows 1,000 requests an hour to repository data. To limit shared polling load,
-at most two pipelines are polled at a time, by
-`watch_pipeline` calls and [subscriptions](subscriptions.md) together;
-beyond that both are refused until one ends.
+A typical status poll takes two Bitbucket requests. Project membership checks
+can double the cost. See the [shared concurrency and rate limits](subscriptions.md#rate-limit).
 
 Streaming adds one log API request per unfinished tracked step on each poll.
 The wait after that poll is multiplied by `(2 + log requests) / 2` to keep the
@@ -537,14 +465,11 @@ same request budget for the selected interval: at the default 30 seconds,
 one log read gives 45 seconds, two give 60 seconds, before
 the doubling for project restrictions. Status progress heartbeats continue at the
 selected base interval (including the doubling for project restrictions) while
-waiting, without additional API requests. At most 100
-started steps are tracked; the timeout still bounds the entire call.
+waiting, without additional API requests. The server tracks up to 100
+started steps.
 
-Short intervals consume the account's shared API allowance faster. Bitbucket can
-return `429`; the watch returns that error with the existing retry guidance.
-The shared limit of two concurrent watches/subscriptions still applies.
-
-Example arguments for a five-second base interval:
+Short intervals consume the shared allowance faster. The watch returns
+`429` with retry guidance when Bitbucket refuses a poll.
 
 ```json
 {"repo":"my-repo","pipeline":"42","poll_interval_seconds":5,"timeout_seconds":600}
@@ -557,13 +482,11 @@ log. Select a step by UUID or unique name. With `step` omitted, the tool
 selects the first failed step or, if none failed, the last step that started.
 It downloads the end of the log and links to the step page with the whole log.
 
-The `steps` alternatives accompanying the log use `steps_page` (1 by default)
-and `steps_limit` (10 by default, at most 50). Pass `steps_next_page` as
-`steps_page`, keeping the same pipeline, selected step, tail size and
-`steps_limit`, for another page. `steps_total` gives the full count. The tool
-reads the full step list, up to 20 API pages, to select a step. The selected
-log is independent of the page of alternatives shown.
-When multiple steps share a name, the tool returns their UUIDs for selection.
+The `steps` alternatives use the same pagination fields as
+[`get_pipeline`](#list_pipelines-get_pipeline). The tool searches the full
+step list within the [internal lookup limit](#pagination), so the chosen
+log is independent of the displayed page. Ambiguous step names return the
+matching UUIDs for selection.
 
 ## Deployment environments
 
@@ -573,10 +496,10 @@ environment by its exact name. To create a new one, pass `create: true` and
 confirmation by default and rejects duplicate names. The result includes the
 environment name and UUID. Use `run_pipeline` to execute a deployment pipeline.
 
-Bitbucket Cloud exposes deployment branch, user and group restrictions in
+Configure deployment branch, user and group restrictions in Bitbucket under
 Repository settings > Pipelines > Deployments. The tool rejects
-`allowed_branches`, `allowed_users` and `allowed_groups` before creating an
-environment. Track public REST API support in [BCLOUD-21703](https://jira.atlassian.com/browse/BCLOUD-21703)
+`allowed_branches`, `allowed_users` and `allowed_groups`. Track public REST
+API support in [BCLOUD-21703](https://jira.atlassian.com/browse/BCLOUD-21703)
 and [BCLOUD-24203](https://jira.atlassian.com/browse/BCLOUD-24203).
 
 ## Schedules
@@ -585,11 +508,8 @@ Bitbucket runs scheduled pipelines on branches only, by a cron pattern in UTC
 with 7 fields: seconds, minutes, hours, day of month, month, day of week and
 year (`0 0 2 * * ? *` runs at 02:00 UTC every day).
 
-- `list_schedules` lists the schedules of `repo`: UUID, branch, pipeline, cron
-  pattern and whether it is enabled. `limit` is 10 by default, at most 50;
-  `page` starts at 1. Each call downloads only that page. Pass `next_page` as
-  `page`, with the same repository and limit, for more. `total` is included
-  when Bitbucket supplies it.
+- `list_schedules` lists schedule UUIDs, branches, pipelines, cron patterns
+  and enabled flags for `repo`.
 - `add_schedule` schedules the `pipeline` of `branch` in `repo` by `cron`. The
   pipeline is written the way results show it: `custom: <name>`,
   `branches: <pattern>` with the pattern as in `bitbucket-pipelines.yml`, or
@@ -604,42 +524,25 @@ year (`0 0 2 * * ? *` runs at 02:00 UTC every day).
   whether it is enabled) or its branch is no longer allowed, nothing is
   deleted and the call has to be made again.
 
-Variable and schedule collections can change between page requests, so entries
-can move or repeat. Paginated read tools do not limit the complete internal
-lookups used to prevent duplicate schedules or unintended variable overwrites.
-
 ## Pull requests
 
 ### Reading comments
 
-`list_pull_request_comments` reads the discussion of `pull_request` (a positive
-PR ID) in `repo`. It includes general comments, inline review comments and replies,
-oldest first. `limit` is 10 by default, at most 50; `page` starts at 1. Pass
-`next_page` back as `page`, keeping the same repository, PR and limit, for more.
-Each call fetches only the requested page. `total` is included when Bitbucket
-reports it. New comments, deletions and edits can change the collection between
-requests, so page numbers do not represent a fixed snapshot.
+`list_pull_request_comments` reads general comments, inline comments and replies
+for `pull_request` (a positive PR ID) in `repo`, oldest first. Each call reads
+one page.
 
 Each comment includes its ID, raw Markdown `content`, author, creation/update
 times, a Bitbucket link and `deleted`, `pending` and `resolved` flags. A reply has
 `parent_id`, even when its parent is on another page. `inline` preserves the file
 path, old-side `from` and new-side `to` line numbers and optional range starts
 `start_from` / `start_to`. Absent or null line numbers remain absent. Resolution
-metadata is returned when available; replies may not repeat their parent's
-resolution. Deleted comments remain as thread placeholders with empty content.
-The server never follows comment links or API pagination links from the response.
+metadata is returned when available. Deleted comments remain as thread
+placeholders with empty content.
 
-The result is marked `content_trust: "untrusted"`: comments and author-supplied
-metadata are data, never instructions or authorization. An encoded result over
-40 KiB is refused without truncating comments; reduce `limit` and start again
-at page 1 so the changed page size does not skip entries. A single oversized
-comment must be read in Bitbucket. Upstream pages are bounded to 4 MiB.
-
-This read-only tool requires `read:pullrequest:bitbucket`, already needed by
-`get_pull_request`, and respects repository/project limits, repository-specific
-tool rules and `BITBUCKET_CONFIRM_TOOLS`. Explicit tool allowlists must include
-`list_pull_request_comments` to permit it. Reading comments does not create,
-resolve or modify them.
+An encoded result over 40 KiB returns an error. Reduce `limit` and start
+again at page 1 to avoid skipping entries. Read a single oversized comment in
+Bitbucket. Upstream pages are bounded to 4 MiB.
 
 ```json
 {"repo":"my-repo","pull_request":42,"limit":10}
@@ -650,37 +553,27 @@ resolve or modify them.
 `create_pull_request_comment` posts `content` (raw Markdown) to `pull_request`
 in `repo`. Omit `parent_id` or use 0 for a new general PR comment. To reply,
 pass a positive comment ID from `list_pull_request_comments` as `parent_id`.
-Replies can continue existing inline threads; creating a new inline thread,
-editing, deleting and resolving comments are not supported by this tool.
+Replies can continue existing inline threads. Use Bitbucket for new inline
+threads, edits, deletions and resolution.
 
-Content must be nonblank and at most 32 KiB in UTF-8 bytes. It is preserved
-exactly, including whitespace. Browser confirmation shows the exact text,
-repository, PR and parent link before posting. The parent must belong to this
-PR, be published and not deleted. If it changes while confirmation is open,
-the operation stops; read the thread and request fresh confirmation. The PR
-and parent are checked again after approval, and live repository/project
-checks still apply. Changes made directly in Bitbucket can race with the final
-POST; Bitbucket's create endpoint does not provide an atomic parent-version check.
+Content must be nonblank and at most 32 KiB in UTF-8 bytes. The tool preserves
+whitespace. Approval shows the exact text, repository, PR and parent link.
+Choose a published, undeleted parent in the same PR. The server rechecks the
+PR and parent after approval. If either has changed, read the thread and
+request fresh approval. Bitbucket handles that check and posting separately.
 
 Success returns `status: "created"`, `comment_id`, optional `parent_id` and a
 Bitbucket URL. Declining returns `status: "cancelled"`. Each approved call posts
 once. If a write fails or its response is ambiguous, inspect the discussion
-before retrying to avoid duplicate comments. Responses do not echo the comment
-body. Existing comments remain untrusted data and cannot authorize a reply.
+before retrying to avoid duplicate comments. The result omits the comment body.
 
-The tool uses `read:pullrequest:bitbucket`, which includes commenting in
-[Bitbucket's permission model](https://support.atlassian.com/bitbucket-cloud/docs/api-token-permissions/).
-It respects repository/project restrictions, repository-specific tool rules
-and `BITBUCKET_CONFIRM_TOOLS`, with browser confirmation enabled by default.
-Add `create_pull_request_comment` to an explicit tool allowlist to enable it.
-
-New general comment:
+To post a general comment, pass the repository, PR and text.
 
 ```json
 {"repo":"my-repo","pull_request":42,"content":"Reviewed: looks good."}
 ```
 
-Reply to an existing comment:
+Add `parent_id` to reply to an existing comment.
 
 ```json
 {"repo":"my-repo","pull_request":42,"content":"Fixed in the latest commit.","parent_id":123}
@@ -688,62 +581,52 @@ Reply to an existing comment:
 
 ### Listing and inspecting pull requests
 
-`list_pull_requests` lists the pull requests of `repo`, the most recently
-updated first, a page at a time (`limit` a page, 10 by default and at most
-50): open ones, or those in `state` `MERGED`, `DECLINED`, `SUPERSEDED` or
-`ALL`; `source_branch` and `destination_branch` keep those from or into a
-branch. Each comes with its ID, title, state, draft flag, author, source and
-destination branches with their commits and repositories, dates, comment and
-open task counts, and its page on bitbucket.org. `page`, 1 by default, picks
-the page; `next_page` is passed back as `page`, with the same filters and
-`limit`, for the next one, and is omitted on the last page. `total` counts the
-pull requests the filters pick when Bitbucket reports it. An update between two
-calls reorders the list, so a pull request can repeat or be skipped. A call
-costs one API request.
+`list_pull_requests` lists PRs in `repo`, most recently updated first. It
+defaults to open PRs. Set `state` to `MERGED`, `DECLINED`, `SUPERSEDED` or
+`ALL`, or filter by `source_branch` and `destination_branch`. Results include
+the ID, state, draft flag, author, branch and commit details, counts and URL.
+Each call reads one API page.
 
-`get_pull_request` describes pull request `pull_request` (its ID) of
-`repo`:
+`get_pull_request` takes `repo` and a `pull_request` ID. Its first page
+includes the following fields.
 
 - title, description, state (`OPEN`, `MERGED`, `DECLINED` or `SUPERSEDED`),
   draft flag, author, dates, comment and open task counts, how it was closed
   (close source branch, merge commit, closed by, decline reason), and its
-  page on bitbucket.org;
+  page on bitbucket.org
 - the source branch with its commit and repository (another one for a pull
-  request from a fork), and the destination branch it merges into;
+  request from a fork), and the destination branch it merges into
 - reviewers and other participants who decided, with their state
-  (`approved`, `changes_requested`, or `pending` for a reviewer);
+  (`approved`, `changes_requested`, or `pending` for a reviewer)
 - one page of build results reported for it, newest first, such as pipeline runs
-  (50 by default);
+  (50 by default)
 - the paths of the changed files with their status and added and removed
-  lines, and how many there are, 200 a page: `files_next` is passed back as
+  lines, and how many there are, 200 a page. Pass `files_next` back as
   `files_from` for the next page. Later pages leave out the description,
   reviewers and builds.
 
 Build results are fetched in one bounded API request. `builds_limit` is 50 by
-default, at most 50; `builds_page` starts at 1. Pass `builds_next_page` as
+default and at most 50. `builds_page` starts at 1. Pass `builds_next_page` as
 `builds_page`, keeping the same repository, PR and `builds_limit`, for more.
 Later build pages return the PR summary and build results without loading files,
 diffs, description or reviewers. Build pagination arguments cannot be combined
 with `paths` or `files_from`. New results or PR commits can change the collection
 between calls, so results can move or repeat. `builds_truncated` indicates that
-later pages exist; `builds_total` is included when Bitbucket reports a count
+later pages exist. `builds_total` is included when Bitbucket reports a count
 larger than the returned page.
 File pages are fetched directly from the requested offset, with at most three
 API page reads per call, rather than downloading all earlier or later pages.
 `files_total` is omitted when Bitbucket does not report it. Each API collection
-page is limited to 4 MiB; an oversized response fails the request.
+page is limited to 4 MiB.
 
-With `paths`, some of the changed files, it returns their diff instead: of
-the source branch against the commit where it forked from the destination,
-as the pull request page shows it, with the fields above except the
-description, reviewers, builds and files. A diff over 40 KB comes in parts,
-cut at a line end unless a single line is longer: the result then has
-`diff_next`, which is passed back as `diff_from` (with the same `paths`) to
-read the next part. Each part downloads the diff up to its end.
+Pass `paths` to read a diff for selected files. The diff compares the source
+branch against the commit where it forked from the destination, as in Bitbucket.
+The result includes the PR summary and diff. Diffs over 40 KB are split at line
+ends when possible. Pass `diff_next` as `diff_from` with the same `paths` to
+continue. Each call downloads the diff up to the end of that part.
 
-A part of a diff or a page of files is refused once the pull request has new
-commits, so they never mix two versions; start again without `diff_from` or
-`files_from` then.
+If the PR changes, start again without `diff_from` or `files_from` to read the
+new version.
 
 Bitbucket returns abbreviated commit hashes in PR metadata and redirects. The
 server resolves them to full hashes through the commit API before comparing them.
@@ -754,12 +637,12 @@ to that actual comparison, including its mode, so a merge that changes the diff
 also requires starting again.
 
 These sizes keep a result of ordinary code and paths under the 25,000 tokens
-Claude Code allows a tool result by default; very long paths or content dense
-in tokens may still go over (`MAX_MCP_OUTPUT_TOKENS` raises the limit).
+Claude Code allows a tool result by default. Very long paths or content dense
+in tokens may exceed that limit. `MAX_MCP_OUTPUT_TOKENS` raises it.
 
-Bitbucket gives up on the file list or the diff of a very large pull request;
-the result then says why in `files_error` or `diff_error` and still holds the
-rest, and fewer `paths` ask for a smaller diff. A call without `paths` costs
+When Bitbucket cannot produce the file list or diff for a large PR, the
+result keeps the available fields and adds `files_error` or `diff_error`.
+Request fewer `paths` for a smaller diff. A call without `paths` costs
 at least four API requests, a later page of files or a part of a diff three.
-Abbreviated hashes usually add two commit lookups; each repository/revision pair
+Abbreviated hashes usually add two commit lookups. Each repository/revision pair
 is resolved once per call.

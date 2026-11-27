@@ -1,31 +1,16 @@
 # bitbucket-cloud-mcp
 
-Custom [MCP](https://modelcontextprotocol.io) server for Bitbucket Cloud,
-written in Go. It speaks MCP over stdio and calls the Bitbucket REST API on
-behalf of the user.
-
-Licensed under the [MIT License](LICENSE).
+[MCP](https://modelcontextprotocol.io) server for Bitbucket Cloud. It connects
+clients over stdio to repository search, pull requests, Pipelines and
+repository settings.
 
 ## Install with Homebrew
-
-Starting with v0.6.0, the executable is named `bitbucket-cloud-mcp`. Releases
-through v0.5.2 use `bitbucket-custom-mcp`. The Homebrew tap is updated separately
-after the release; until that update is available, build the current source:
-
-```sh
-make build
-./bin/bitbucket-cloud-mcp --version
-```
-
-To install the source build, run `make install` (or set `BINDIR` to choose the
-installation directory). Existing MCP client configurations need the new
-executable path.
 
 ```sh
 brew install edspc/extended/bitbucket-cloud-mcp
 ```
 
-To update an existing installation:
+To update an existing installation, run the following commands.
 
 ```sh
 brew update
@@ -34,40 +19,41 @@ brew upgrade edspc/extended/bitbucket-cloud-mcp
 
 ## Download the latest binary
 
-Download the latest binary for macOS or Linux, on ARM64 or x86-64:
+Download and install the latest executable from GitHub Releases for macOS or
+Linux on ARM64 or x86-64.
 
 ```sh
-curl -fL -o bitbucket-cloud-mcp "https://github.com/edspc/bitbucket-cloud-mcp/releases/latest/download/bitbucket-cloud-mcp-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')"
+os=$(uname -s | tr '[:upper:]' '[:lower:]')
+arch=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+curl -fL -o bitbucket-cloud-mcp "https://github.com/edspc/bitbucket-cloud-mcp/releases/latest/download/bitbucket-cloud-mcp-${os}-${arch}" &&
+  mkdir -p "$HOME/.local/bin" &&
+  install -m 0755 bitbucket-cloud-mcp "$HOME/.local/bin/bitbucket-cloud-mcp"
 ```
 
-Install the downloaded binary:
+## Build from source
 
-```sh
-mkdir -p "$HOME/.local/bin"
-install -m 0755 bitbucket-cloud-mcp "$HOME/.local/bin/bitbucket-cloud-mcp"
-```
+With the Go version in [`go.mod`](go.mod), run `make install` from the
+checkout. The default destination is `~/.local/bin`. Set `BINDIR` to choose
+another directory.
 
-Add `~/.local/bin` to your `PATH` if it is not already there, or use the full path
-to the executable.
+## Connect an MCP client
 
-Verify either installation method with:
+Add the install directory to `PATH` or use the executable's absolute path.
+Verify the installation with the following command.
 
 ```sh
 bitbucket-cloud-mcp --version
 ```
 
-## macOS Keychain
-
-Run `bitbucket-cloud-mcp configure` in a terminal to save connection and
-access-limit settings in Keychain. On later runs, select one field to update,
-such as a rotated API token, or choose full setup. The API token input is hidden.
-See [Keychain setup](docs/configuration.md#macos-keychain-setup) for details.
-Environment variables override saved settings.
+Configure the workspace, Atlassian email and API token, then register the
+executable as an MCP stdio server. On macOS, `bitbucket-cloud-mcp configure`
+can save the settings in Keychain. See [Configuration](docs/configuration.md).
 
 ## Documentation
 
 - [CLI](docs/cli.md)
 - [Configuration and access limits](docs/configuration.md)
+- [Setup in Codex](docs/codex.md)
 - [Setup in Claude Code](docs/claude-code.md)
 - [Setup in Claude Desktop](docs/claude-desktop.md)
 - [Tools](docs/tools.md)
@@ -75,3 +61,5 @@ Environment variables override saved settings.
 - [Security and secret entry](docs/security.md)
 - [Development and checks](docs/development.md)
 - [Releases](docs/releases.md)
+
+[MIT License](LICENSE)

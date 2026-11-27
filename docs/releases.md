@@ -1,56 +1,43 @@
 # Releases
 
-Releases use [GoReleaser](https://goreleaser.com/) v2.18.3 and the configuration
-in `.goreleaser.yaml`. Install that version of its CLI to package locally;
-GitHub Actions installs the pinned version through the GoReleaser action.
-GoReleaser reads the version from the Git tag (`vMAJOR.MINOR.PATCH`). The tag
-must match the version committed in `cmd/server/cli.go`, so binaries and installs
-built from a source archive report the same version. A pre-release hook checks
-this match and gathers the Go and module license notices for the release notes with the `notices`
-command of [go-release-actions](https://github.com/edspc/go-release-actions),
-which the workflow also uses to raise the version; both are pinned by commit.
+## Publish a release
 
-Run the **Release** workflow manually on the branch to release and choose
-`bump`, the part of the version to increase: `patch` (the default), `minor` or
-`major`. The parts after it reset to zero, so `minor` turns `X.Y.Z` into
-`X.(Y+1).0`. The workflow computes the version from the one committed in
-`cmd/server/cli.go`, updates the executable version and CLI documentation
-examples, tests the result, commits the version, and atomically pushes the
-commit and annotated
-`v<version>` tag. GoReleaser then builds and publishes the GitHub Release,
-including its changelog and assets.
-Existing tags or releases are refused. The workflow needs permission to push to
-the selected branch; branch protection can reject the atomic push without
-creating a tag. If GoReleaser fails after the push, the commit and tag remain:
-recover the release from that existing tag instead of dispatching the workflow
-again.
+Run the [Release workflow](../.github/workflows/release.yml) manually on the
+target branch. Set `bump` to `patch` (the default), `minor` or `major`.
 
-For local release packaging, check out a clean commit tagged with its executable
-version, then run `make release`. This validates the release and creates the
-binaries in platform-specific subdirectories of `dist/` without publishing.
-`make release-snapshot` also works from an untagged or dirty checkout, using a
-`-SNAPSHOT` version derived from the latest
-tag; it skips the source-version check and never publishes. The executable in a
-snapshot still reports its committed source version.
+The workflow requires the [Security workflow](../.github/workflows/security.yml)
+to pass on the selected commit. It then updates the version in
+[`cmd/server/cli.go`](../cmd/server/cli.go) and the CLI example, runs tests,
+and pushes the version commit and annotated tag atomically. GoReleaser
+publishes the binaries and changelog.
 
-Both commands build four executables with `CGO_ENABLED=0` and `-trimpath`.
-Locally, each executable keeps the name `bitbucket-cloud-mcp`, for example at
-`dist/bitbucket-cloud-mcp_linux_amd64_v1/bitbucket-cloud-mcp`. For exact paths
-and their corresponding release asset names, read the `path` and `name` fields
-of entries with `extra.Format` set to `binary` in `dist/artifacts.json`.
+The workflow stops if the resulting tag or release already exists. If
+publication fails after the version commit and tag are pushed, recover
+using that tag. A second bump would create a different version.
 
-The GitHub Release asset names are:
+## Build locally
 
-- `bitbucket-cloud-mcp-darwin-arm64`
-- `bitbucket-cloud-mcp-darwin-amd64`
-- `bitbucket-cloud-mcp-linux-arm64`
-- `bitbucket-cloud-mcp-linux-amd64`
+Install the Go version in [`go.mod`](../go.mod) and
+[GoReleaser](https://goreleaser.com/) v2.18.3, the version pinned by CI.
 
-Only these binaries are uploaded as release assets. Project, Go and module license
-notices are included in the release notes. GoReleaser does not upload source
-archives or a checksum file; GitHub still provides its automatic source downloads.
-Private repositories require authenticated access to release assets.
+| Command | Input and output |
+| --- | --- |
+| `make release` | Clean, tagged checkout whose tag matches the executable version. Builds assets in `dist/` |
+| `make release-snapshot` | Any checkout. Uses a `-SNAPSHOT` package version and the committed application version in the executable |
 
-Binary names are stable across versions so the installation command can use
-`releases/latest/download/<binary>` directly. The release tag and executable
-version still identify the version.
+Both commands build locally. The version in `cmd/server/cli.go` is used for
+`--version` and MCP `initialize`. The release hook checks the tagged version
+and gathers Go and dependency license notices for the release notes.
+
+## Release assets
+
+The [GoReleaser configuration](../.goreleaser.yaml) builds macOS and Linux
+executables for amd64 and arm64 with `CGO_ENABLED=0`. The build strips
+debug symbols and uses 16-byte function alignment. GitHub serves the raw
+executables as `bitbucket-cloud-mcp-{darwin,linux}-{arm64,amd64}`.
+Use `dist/artifacts.json` to map local paths to those asset names.
+
+The [Homebrew tap](https://github.com/edspc/homebrew-extended/blob/main/Formula/bitbucket-cloud-mcp.rb)
+is updated separately. It builds from the tagged source and publishes its own
+bottles. Go selects the Keychain implementation when building for macOS and
+environment-only configuration when building for Linux.
